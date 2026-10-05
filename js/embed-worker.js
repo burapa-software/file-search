@@ -7,6 +7,7 @@ import { env, AutoTokenizer, AutoModel } from "../vendor/transformers/transforme
 
 const MODEL = "paraphrase-multilingual-MiniLM-L12-v2";
 const MODEL_FILE = "model_quantized.onnx";
+const MODEL_BYTES = 118308185;           // ขนาดไฟล์โมเดลทั้งก้อน ใช้แสดงความคืบหน้าตอนโหลด
 const MODEL_PARTS = 3;                    // ไฟล์โมเดลถูกหั่นเป็นชิ้น เพราะที่ฝากเว็บรับได้ไม่เกิน 100 MB ต่อไฟล์
 const MODEL_CACHE = "file-search-model-" + MODEL;   // เก็บโมเดลที่โหลดแล้วไว้ในเบราว์เซอร์ ครั้งต่อไปไม่ต้องโหลดใหม่
 const MAX_TOKENS = 128;                   // โมเดลนี้ถูกฝึกกับข้อความสั้น ๆ  ข้อความที่ยาวกว่านี้ดูแค่ช่วงต้น
@@ -25,9 +26,8 @@ function modelResponse(url) {
     if (kept) return kept.blob();
 
     const parts = [];
-    let loaded = 0, total = 0;
-    const heads = await Promise.all(Array.from({ length: MODEL_PARTS }, (_, i) => fetch(`${url}.part${i}`, { method: "HEAD" })));
-    for (const h of heads) total += Number(h.headers.get("content-length")) || 0;
+    let loaded = 0;
+    const total = MODEL_BYTES;
     for (let i = 0; i < MODEL_PARTS; i++) {
       const res = await fetch(`${url}.part${i}`);
       if (!res.ok) throw new Error(`โหลดโมเดลไม่สำเร็จ (ชิ้นที่ ${i + 1}: ${res.status})`);
