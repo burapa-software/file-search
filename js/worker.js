@@ -7,6 +7,7 @@ import { context, prepare, search } from "./search.js";
 import { getAll, put, removeMany } from "./db.js";
 import { recognize, release } from "./ocr.js";
 import { embedRecord, loadModel, needsEmbedding, semanticSearch } from "./semantic.js";
+import { TAG_LOC, TAGGABLE, TEXT_IMAGE_CHARS, loadVision, tagImage } from "./tags.js";
 
 // โฟลเดอร์ที่ข้าม ไม่ต้องอ่าน
 const SKIP_DIRS = new Set(["$RECYCLE.BIN", "System Volume Information", "node_modules", "__pycache__"]);
@@ -14,6 +15,7 @@ const SKIP_DIRS = new Set(["$RECYCLE.BIN", "System Volume Information", "node_mo
 const records = new Map();      // key → ระเบียนไฟล์ (ดัชนีทั้งหมดอยู่ในหน่วยความจำ จะได้ค้นเร็ว)
 let ocrOn = false;              // ผู้ใช้เปิด OCR ไว้ไหม (หน้าเว็บส่งมาบอก เปลี่ยนได้แม้ระหว่างทำดัชนี)
 let semOn = false;              // ผู้ใช้เปิดการค้นตามความหมายไว้ไหม
+let tagsOn = false;             // ผู้ใช้เปิดให้ AI ดูรูปไว้ไหม
 let serialWaiting = 0;          // งานแก้ไขดัชนีที่รอคิวอยู่ (ให้ AI หยุดพักเมื่อมีงานอื่นรอ)
 let loaded = null;
 
@@ -27,10 +29,11 @@ function load() {
 function stats() {
   const out = {};
   for (const rec of records.values()) {
-    const s = (out[rec.folderId] ??= { total: 0, errors: 0, needsOcr: 0 });
+    const s = (out[rec.folderId] ??= { total: 0, errors: 0, needsOcr: 0, needsTags: 0 });
     s.total++;
     if (rec.error) s.errors++;
     if (rec.needsOcr) s.needsOcr++;
+    if (rec.needsTags) s.needsTags++;
   }
   return out;
 }
@@ -81,13 +84,14 @@ async function index(folderId, items, failedDirs, progress) {
     }
     const unchanged = old && old.mtime === file.lastModified && old.size === file.size && old.v === readerVersion(ext);
     // ไฟล์ไม่เปลี่ยนและรอบก่อนอ่านได้ปกติ ไม่ต้องอ่านใหม่ (ไฟล์ที่รอบก่อนอ่านไม่ได้ จะลองใหม่ทุกรอบ)
-    // ไฟล์ที่รอ OCR อยู่ จะถูกอ่านใหม่เมื่อเปิด OCR
-    if (unchanged && !old.error && !(old.needsOcr && ocrOn)) {
+    // ไฟล์ที่รอ OCR อยู่ จะถูกอ่านใหม่เมื่อเปิด OCR  รูปที่รอให้ AI ดู ก็เช่นกันเมื่อเปิดสวิตช์นั้น
+    const textStillGood = unchanged && !old.error && !(old.needsOcr && ocrOn);
+    if (textStillGood && !(old.needsTags && tagsOn)) {
       count.unchanged++;
       continue;
     }
 
-    let error = null, chunks = [], needsOcr = false;
+    let error = null, chunks = [], needsOcr = false, needsTags = false;
     if (file.size > MAX_SIZE) {
       error = "ไฟล์ใหญ่เกินกำหนด";
     } else {
@@ -100,9 +104,26 @@ async function index(folderId, items, failedDirs, progress) {
       }
       if (bytes) {
         try {
-          ({ chunks, needsOcr } = await extract(item.name, bytes, ocrOn ? recognize : null));
+          if (textStillGood) {                  // ข้อความเดิมยังใช้ได้ แค่ยังไม่ได้ให้ AI ดูรูป ไม่ต้อง OCR ซ้ำ
+            chunks = old.chunks.filter((c) => c.loc !== TAG_LOC);
+            needsOcr = old.needsOcr;
+          } else {
+            ({ chunks, needsOcr } = await extract(item.name, bytes, ocrOn ? recognize : null));
+          }
         } catch (e) {                           // ไฟล์เสีย / ใส่รหัสผ่าน / รูปแบบแปลก
           error = String(e.message || e).slice(0, 300);
+        }
+        // รูปภาพ: ให้ AI ติดป้ายว่าในภาพมีอะไร เก็บเป็นข้อความอีกชิ้น จะได้ค้นเจอด้วยคำนั้น
+        if (!error && TAGGABLE.has(ext) && chunks.reduce((n, c) => n + c.text.length, 0) < TEXT_IMAGE_CHARS) {
+          if (!tagsOn) needsTags = true;
+          else {
+            try {
+              const text = await tagImage(new Blob([bytes]));
+              if (text) chunks.push({ loc: TAG_LOC, text });
+            } catch (e) {
+              needsTags = true;                 // AI ใช้ไม่ได้ตอนนี้ (เช่น โหลดโมเดลไม่สำเร็จ) ลองใหม่รอบหน้า
+            }
+          }
         }
       }
     }
@@ -114,7 +135,7 @@ async function index(folderId, items, failedDirs, progress) {
     const rec = {
       key, folderId, rel: item.rel, name: item.name, ext,
       size: file.size, mtime: file.lastModified, v: readerVersion(ext),
-      error, needsOcr, chunks,
+      error, needsOcr, needsTags, chunks,
     };
     await put("files", rec);
     records.set(key, prepare(rec));
@@ -169,6 +190,15 @@ const commands = {
     const keys = [...records.values()].filter((r) => r.folderId === folderId).map((r) => r.key);
     await removeMany("files", keys);
     for (const key of keys) records.delete(key);
+  },
+
+  async setTags({ on }) {
+    tagsOn = on;
+  },
+
+  // โหลดโมเดลดูรูปล่วงหน้า (จะได้แสดงความคืบหน้าการดาวน์โหลดก่อนเริ่มทำดัชนี)
+  async loadVision(_, progress) {
+    await loadVision(progress);
   },
 
   async setSemantic({ on }) {

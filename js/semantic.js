@@ -4,6 +4,7 @@
 // ตัว AI อยู่ใน embed-worker.js  ไฟล์นี้ดูแลการแบ่งตอน การเก็บเวกเตอร์ และการเทียบ
 
 import { FILE_TYPES, MAX_PASSAGES, PASSAGE_CHARS, SEMANTIC_DIMS as DIMS, SEMANTIC_VERSION } from "./types.js";
+import { ask } from "./ai.js";
 
 const MIN_SCORE = 0.35;         // ใกล้เคียงน้อยกว่านี้ถือว่าไม่เกี่ยว (0 = ไม่เกี่ยวเลย, 1 = ความหมายเดียวกัน)
 const MAX_FILES = 5;            // แสดงไม่เกินกี่ไฟล์
@@ -12,34 +13,6 @@ const NAME_WEIGHT = 0.75;
 const NAME_MIN_LETTERS = 8;
 const MAX_HITS = 2;             // ตอนที่ใกล้เคียงที่สุดต่อไฟล์ ที่ส่งกลับไปแสดง
 const BATCH = 4;                // ส่งให้ AI ครั้งละกี่ตอน (น้อย ๆ คำค้นของผู้ใช้จะได้แทรกคิวได้เร็ว)
-
-// ---------------- ติดต่อกับตัว AI ----------------
-let ai = null, seq = 0;
-const pending = new Map();
-
-function ask(message, onProgress) {
-  if (!ai) {
-    ai = new Worker(new URL("./embed-worker.js", import.meta.url), { type: "module" });
-    ai.onmessage = ({ data }) => {
-      const job = pending.get(data.id);
-      if (!job) return;
-      if (data.progress) return job.onProgress && job.onProgress(data.progress);
-      pending.delete(data.id);
-      if (data.error) job.reject(new Error(data.error));
-      else job.resolve(data.result);
-    };
-    ai.onerror = () => {
-      for (const job of pending.values()) job.reject(new Error("ตัว AI เริ่มทำงานไม่ได้"));
-      pending.clear();
-      ai = null;
-    };
-  }
-  return new Promise((resolve, reject) => {
-    const id = ++seq;
-    pending.set(id, { resolve, reject, onProgress });
-    ai.postMessage({ id, ...message });
-  });
-}
 
 // โหลดโมเดล (ครั้งแรกดาวน์โหลด ครั้งต่อไปเปิดจากที่เบราว์เซอร์เก็บไว้)  onProgress({ loaded, total }) ระหว่างดาวน์โหลด
 export const loadModel = (onProgress) => ask({ cmd: "load" }, onProgress);

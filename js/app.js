@@ -57,6 +57,33 @@ async function setOcr(on) {
   }
 }
 
+// ---------------- ให้ AI ดูรูป ----------------
+// ปิดไว้เป็นค่าเริ่มต้น เพราะต้องโหลดโมเดลก้อนใหญ่  ค่าที่เลือกจำไว้ในเบราว์เซอร์
+const tagsOn = () => localStorage.getItem("tags") === "on";
+
+async function setTags(on) {
+  localStorage.setItem("tags", on ? "on" : "off");
+  await call("setTags", { on });
+  const status = $("tags-status");
+  status.className = "sem-status";
+  status.textContent = "";
+  renderFolders();
+  if (!on) return;
+  try {
+    await call("loadVision", {}, (p) => { status.textContent = `กำลังโหลดโมเดลดูรูป ${Math.round(p.loaded / 1e6)} / ${Math.round(p.total / 1e6)} MB`; });
+    status.textContent = "";
+  } catch (e) {
+    status.classList.add("error");
+    status.textContent = `AI ดูรูปใช้ไม่ได้: ${e.message}`;
+    return;
+  }
+  // ให้ AI ดูรูปที่รออยู่ ของโฟลเดอร์ที่เบราว์เซอร์ยังอนุญาตให้เลย
+  for (const folder of folders) {
+    const st = stateOf(folder.id);
+    if (folder.kind === "handle" && !st.busy && !st.needsPermission && (stats[folder.id] || {}).needsTags) scan(folder);
+  }
+}
+
 // ---------------- ค้นตามความหมาย (AI) ----------------
 // ปิดไว้เป็นค่าเริ่มต้น เพราะต้องโหลดโมเดลก้อนใหญ่ และ AI ใช้เวลาอ่านเอกสารนาน  ค่าที่เลือกจำไว้ในเบราว์เซอร์
 // สวิตช์รวมของฟีเจอร์นี้: ตั้งเป็น false เพื่อซ่อนจากหน้าเว็บทั้งหมด (เช่น ถ้าไฟล์โมเดลใน vendor/models ยังไม่พร้อม)
@@ -131,7 +158,7 @@ function renderFolders() {
   renderGear();
   for (const folder of folders) {
     const st = stateOf(folder.id);
-    const s = stats[folder.id] || { total: 0, errors: 0, needsOcr: 0 };
+    const s = stats[folder.id] || { total: 0, errors: 0, needsOcr: 0, needsTags: 0 };
     const status = el("span", { className: "status" });
     const actions = [];
 
@@ -150,6 +177,7 @@ function renderFolders() {
       const parts = [`${num(s.total)} ไฟล์`];
       if (s.errors) parts.push(`อ่านไม่ได้ ${num(s.errors)}`);
       if (s.needsOcr) parts.push(`รอ OCR ${num(s.needsOcr)} (รูปภาพ/เอกสารสแกน ${ocrOn() ? "กด อัปเดต เพื่ออ่าน" : "ค้นได้แค่ชื่อไฟล์จนกว่าจะเปิด OCR"})`);
+      if (s.needsTags && tagsOn()) parts.push(`รอ AI ดูรูป ${num(s.needsTags)} (กด อัปเดต)`);
       if (st.note) parts.push(st.note);
       status.append(parts.join(" · "));
       if (st.error) { status.classList.add("error"); status.textContent = st.error; }
@@ -527,6 +555,8 @@ async function start() {
   $("ocr").checked = ocrOn();
   $("ocr").onchange = (e) => setOcr(e.target.checked);
 
+  $("tags").checked = tagsOn();
+  $("tags").onchange = (e) => setTags(e.target.checked);
   $("semantic").closest("label").hidden = !SEMANTIC_AVAILABLE;
   $("semantic").checked = semOn();
   $("semantic").onchange = (e) => setSemantic(e.target.checked);
@@ -534,6 +564,7 @@ async function start() {
   folders = await getAll("folders");
   await call("setOcr", { on: ocrOn() });
   await call("setSemantic", { on: semOn() });
+  await call("setTags", { on: tagsOn() });
   renderFolders();
 
   // โฟลเดอร์ที่เบราว์เซอร์ยังอนุญาตอยู่ อัปเดตดัชนีให้เองตอนเปิดหน้า  ที่เหลือรอให้ผู้ใช้กด "อนุญาต"
