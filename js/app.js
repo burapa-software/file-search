@@ -473,6 +473,59 @@ async function openFile(r, button) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+// ---------------- ค้นด้วยเสียง ----------------
+// ใช้ตัวแปลงเสียงเป็นข้อความที่มากับเบราว์เซอร์ (Chrome / Edge) ซึ่งส่งเสียงไปแปลงที่เซิร์ฟเวอร์ของผู้ผลิตเบราว์เซอร์ จึงต้องต่อเน็ต
+// นี่เป็นส่วนเดียวของเว็บที่มีข้อมูลออกจากเครื่อง (เฉพาะเสียงคำค้น ไม่ใช่เอกสาร) จึงบอกผู้ใช้ทุกครั้งที่เริ่มฟัง
+const speechApi = () => window.SpeechRecognition || window.webkitSpeechRecognition;
+const VOICE_ERRORS = {
+  "not-allowed": "เบราว์เซอร์ไม่ได้รับอนุญาตให้ใช้ไมโครโฟน กดรูปแม่กุญแจข้างที่อยู่เว็บเพื่ออนุญาต แล้วลองใหม่",
+  "service-not-allowed": "เบราว์เซอร์นี้ไม่เปิดให้แปลงเสียงเป็นข้อความ",
+  "audio-capture": "ไม่พบไมโครโฟนในเครื่องนี้",
+  "network": "ค้นด้วยเสียงต้องต่ออินเทอร์เน็ต ตรวจการเชื่อมต่อแล้วลองใหม่",
+  "no-speech": "ไม่ได้ยินเสียง ลองกดไมโครโฟนแล้วพูดใหม่",
+  "language-not-supported": "เบราว์เซอร์นี้แปลงเสียงภาษาไทยไม่ได้",
+};
+let listening = null;           // ตัวฟังเสียงที่กำลังทำงานอยู่ (ไม่มี = ไม่ได้ฟัง)
+
+function toggleVoice() {
+  if (listening) return listening.stop();       // กดซ้ำระหว่างฟัง = หยุดฟัง
+  const mic = $("mic"), summary = $("summary");
+  const rec = new (speechApi())();
+  rec.lang = "th-TH";
+  rec.interimResults = true;                    // แสดงคำที่ได้ยินในช่องค้นระหว่างพูด
+  let heard = false, failed = false;
+  rec.onstart = () => {
+    listening = rec;
+    mic.classList.add("listening");
+    mic.ariaPressed = "true";
+    summary.className = "summary";
+    summary.textContent = "กำลังฟัง พูดคำที่ต้องการค้นได้เลย (เสียงคำค้นถูกส่งไปแปลงเป็นข้อความที่ Google)";
+  };
+  rec.onresult = (event) => {
+    const text = [...event.results].map((r) => r[0].transcript).join("").trim();
+    if (!text) return;
+    heard = true;
+    $("query").value = text;
+  };
+  rec.onerror = (event) => {
+    if (event.error === "aborted") return;      // ผู้ใช้กดหยุดเอง
+    failed = true;
+    summary.textContent = VOICE_ERRORS[event.error] || `ค้นด้วยเสียงไม่สำเร็จ (${event.error})`;
+  };
+  rec.onend = () => {
+    listening = null;
+    mic.classList.remove("listening");
+    mic.ariaPressed = "false";
+    if (heard) runSearch();
+    else if (!failed) summary.textContent = VOICE_ERRORS["no-speech"];
+  };
+  try {
+    rec.start();
+  } catch (e) {
+    summary.textContent = `ค้นด้วยเสียงไม่สำเร็จ (${e.message})`;
+  }
+}
+
 // ---------------- พรีวิวในการ์ด ----------------
 const PAGE_IMAGE = new Set([".pdf", ".tif", ".tiff"]);              // วาดภาพหน้าจริงด้วย MuPDF
 const PLAIN_IMAGE = new Set([".png", ".jpg", ".jpeg", ".bmp"]);     // เบราว์เซอร์แสดงรูปได้เอง
@@ -545,6 +598,8 @@ async function start() {
   $("add-folder").disabled = !("showDirectoryPicker" in window);
   $("add-folder").onclick = addFolder;
   $("folders-gear").onclick = toggleFolders;
+  $("mic").hidden = !speechApi();
+  $("mic").onclick = toggleVoice;
   $("add-fallback").onclick = () => $("fallback-input").click();
   $("fallback-input").onchange = (e) => addFallback(e.target.files).finally(() => { e.target.value = ""; });
   $("more").onclick = () => renderResults(false);

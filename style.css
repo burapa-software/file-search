@@ -59,6 +59,22 @@ p { margin: 8px 0; }
   padding: 16px 0 14px;
   border-bottom: 1px solid var(--line);
 }
+/* ปุ่มไมโครโฟน (ค้นด้วยเสียง)  ตอนกำลังฟัง: พื้นเขียว มีวงกระเพื่อม */
+.mic {
+  flex-shrink: 0;
+  display: grid; place-items: center;
+  border: 0; border-radius: 50%; padding: 8px;
+  color: var(--muted);
+}
+.mic:hover { color: var(--green); background: rgba(var(--green-glow), 0.12); }
+.mic.listening { color: var(--green-on); background: var(--green); animation: mic-pulse 1.2s ease-out infinite; }
+@keyframes mic-pulse {
+  from { box-shadow: 0 0 0 0 rgba(var(--green-glow), 0.6); }
+  to   { box-shadow: 0 0 0 14px rgba(var(--green-glow), 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mic.listening { animation: none; }
+}
 .intro-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
 .intro { margin: 0; }
 /* ปุ่มฟันเฟือง: สวิตช์แสดง/ซ่อนการ์ดโฟลเดอร์  เขียว = การ์ดแสดงอยู่, เทา = ซ่อนอยู่ */
