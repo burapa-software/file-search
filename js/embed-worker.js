@@ -7,7 +7,7 @@ import { env, AutoTokenizer, AutoModel } from "../vendor/transformers/transforme
 
 const MODEL = "paraphrase-multilingual-MiniLM-L12-v2";
 const MODEL_FILE = "model_quantized.onnx";
-const MODEL_BYTES = 118308185;           // ขนาดไฟล์โมเดลทั้งก้อน ใช้แสดงความคืบหน้าตอนโหลด
+const MODEL_BYTES = 118308126;           // ขนาดไฟล์โมเดลทั้งก้อน ใช้แสดงความคืบหน้าตอนโหลด
 const MODEL_PARTS = 3;                    // ไฟล์โมเดลถูกหั่นเป็นชิ้น เพราะที่ฝากเว็บรับได้ไม่เกิน 100 MB ต่อไฟล์
 const MODEL_CACHE = "file-search-model-" + MODEL;   // เก็บโมเดลที่โหลดแล้วไว้ในเบราว์เซอร์ ครั้งต่อไปไม่ต้องโหลดใหม่
 const MAX_TOKENS = 128;                   // โมเดลนี้ถูกฝึกกับข้อความสั้น ๆ  ข้อความที่ยาวกว่านี้ดูแค่ช่วงต้น
