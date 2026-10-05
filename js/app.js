@@ -59,9 +59,8 @@ async function setOcr(on) {
 
 // ---------------- ค้นตามความหมาย (AI) ----------------
 // ปิดไว้เป็นค่าเริ่มต้น เพราะต้องโหลดโมเดลก้อนใหญ่ และ AI ใช้เวลาอ่านเอกสารนาน  ค่าที่เลือกจำไว้ในเบราว์เซอร์
-// ตอนนี้เปิดให้ใช้เฉพาะตอนทดสอบในเครื่อง: ไฟล์ไลบรารี AI และโมเดล (vendor/transformers, vendor/models) ยังไม่ได้ขึ้นเว็บจริง
-// เมื่อขึ้นแล้ว ให้เปลี่ยนค่านี้เป็น true
-const SEMANTIC_AVAILABLE = ["localhost", "127.0.0.1"].includes(location.hostname);
+// สวิตช์รวมของฟีเจอร์นี้: ตั้งเป็น false เพื่อซ่อนจากหน้าเว็บทั้งหมด (เช่น ถ้าไฟล์โมเดลใน vendor/models ยังไม่พร้อม)
+const SEMANTIC_AVAILABLE = true;
 const semOn = () => SEMANTIC_AVAILABLE && localStorage.getItem("semantic") === "on";
 let embedBusy = false, embedAgain = false;
 
