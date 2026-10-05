@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ค้นหาข้อความในไฟล์</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <!-- แถบบนสุด: คำว่า "ค้นหา" + ช่องพิมพ์คำค้น + ป้ายชื่อทีม  ตรึงไว้บนสุด ไม่เลื่อนตามหน้า -->
+    <header class="bar">
+      <h1><label for="query">ค้นหา</label></h1>
+      <input id="query" type="search" autocomplete="off" spellcheck="false"
+             placeholder="พิมพ์คำที่ต้องการค้น เช่น บูรพาน่ารัก  (หลายคำคั่นด้วยเว้นวรรค)">
+      <!-- ชื่อและรูปประจำทีม: วางไฟล์รูปชื่อ brand.png ไว้ในโฟลเดอร์ web/ รูปจะขึ้นเอง (ถ้าไม่มีไฟล์ จะแสดงแต่ชื่อ) -->
+      <div class="brand">
+        <img src="brand.png" alt="" onerror="this.remove()">
+        <span>บูรพาซอฟต์แวร์</span>
+      </div>
+    </header>
+    <p class="muted intro">ค้นคำใน Word, Excel, PowerPoint, PDF ไฟล์ข้อความ และเอกสารสแกนในเครื่องของคุณ</p>
+
+    <div id="unsupported" class="notice warn" hidden>
+      เบราว์เซอร์นี้เลือกโฟลเดอร์แบบจำได้ไม่ได้ ให้เปิดหน้านี้ด้วย Chrome หรือ Edge บนคอมพิวเตอร์
+    </div>
+
+    <section class="card" aria-labelledby="folders-title">
+      <div class="row between">
+        <h2 id="folders-title">โฟลเดอร์ที่ค้น <span class="hint">(สามารถเพิ่มได้หลายโฟลเดอร์)</span></h2>
+        <button id="add-folder" class="primary green">เพิ่มโฟลเดอร์</button>
+      </div>
+      <ul id="folders" class="folders"></ul>
+      <label class="option">
+        <input id="ocr" type="checkbox">
+        <span>อ่านตัวหนังสือในรูปภาพและเอกสารสแกน (OCR) <span class="muted">ช้ากว่าปกติมาก หลายวินาทีต่อรูปหรือต่อหน้า</span></span>
+      </label>
+      <p id="no-folders" class="muted" hidden>ยังไม่มีโฟลเดอร์ กด "เพิ่มโฟลเดอร์" แล้วเลือกโฟลเดอร์ที่เก็บเอกสาร เพิ่มได้หลายโฟลเดอร์</p>
+      <details class="help">
+        <summary>เลือกโฟลเดอร์ไม่ได้</summary>
+        <p>Chrome ไม่ให้เลือกทั้งไดรฟ์ C: และไม่ให้เลือกโฟลเดอร์ Documents, Desktop, Downloads ตัวมันเอง ให้เข้าไปเลือกโฟลเดอร์ย่อยข้างในแทน ไดรฟ์ข้อมูลอย่าง D: เลือกทั้งไดรฟ์ได้</p>
+        <p>ถ้าไฟล์วางอยู่ใน Documents หรือ Desktop โดยตรง ให้ใช้วิธีสำรองด้านล่าง วิธีนี้เว็บจะจำเนื้อหาไว้ค้นได้ แต่ถ้าไฟล์เปลี่ยน ต้องกลับมาเลือกโฟลเดอร์ใหม่เพื่ออัปเดต</p>
+        <button id="add-fallback">เลือกโฟลเดอร์ด้วยวิธีสำรอง</button>
+        <input id="fallback-input" type="file" webkitdirectory multiple hidden>
+      </details>
+    </section>
+
+    <section class="search" aria-label="ตัวกรอง">
+      <div class="row filters">
+        <div id="types" class="chips" role="group" aria-label="ประเภทไฟล์"></div>
+        <select id="folder-filter" aria-label="ค้นเฉพาะในโฟลเดอร์" hidden></select>
+      </div>
+    </section>
+
+    <p id="summary" class="summary" role="status"></p>
+    <ol id="results" class="results"></ol>
+    <button id="more" hidden>แสดงเพิ่ม</button>
+  </main>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
