@@ -233,8 +233,13 @@ const commands = {
   // หยุดเองเมื่อผู้ใช้ปิดสวิตช์ หรือมีงานทำดัชนีรอคิวอยู่  คืน { done, left, stopped }
   async embed(_, progress) {
     if (!semOn) return { done: 0, left: 0, stopped: true };
-    await loadModel((model) => progress({ model }));
     const todo = [...records.values()].filter(needsEmbedding);
+    if (!todo.length) {
+      // ไม่มีอะไรให้อ่าน: เตรียมโมเดลไว้เบื้องหลังสำหรับการค้น แต่ไม่รอ จะได้ไม่ขวางคิวงานทำดัชนี (โมเดลใช้เวลาเปิดหลายวินาที)
+      loadModel().catch(() => {});
+      return { done: 0, left: 0, stopped: false };
+    }
+    await loadModel((model) => progress({ model }));
     let done = 0;
     for (const rec of todo) {
       if (!semOn || serialWaiting > 0) return { done, left: todo.length - done, stopped: true };
