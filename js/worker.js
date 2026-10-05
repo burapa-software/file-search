@@ -6,12 +6,15 @@ import { FILE_TYPES, MAX_SIZE, extOf, readerVersion } from "./types.js";
 import { context, prepare, search } from "./search.js";
 import { getAll, put, removeMany } from "./db.js";
 import { recognize, release } from "./ocr.js";
+import { embedRecord, loadModel, needsEmbedding, semanticSearch } from "./semantic.js";
 
 // โฟลเดอร์ที่ข้าม ไม่ต้องอ่าน
 const SKIP_DIRS = new Set(["$RECYCLE.BIN", "System Volume Information", "node_modules", "__pycache__"]);
 
 const records = new Map();      // key → ระเบียนไฟล์ (ดัชนีทั้งหมดอยู่ในหน่วยความจำ จะได้ค้นเร็ว)
 let ocrOn = false;              // ผู้ใช้เปิด OCR ไว้ไหม (หน้าเว็บส่งมาบอก เปลี่ยนได้แม้ระหว่างทำดัชนี)
+let semOn = false;              // ผู้ใช้เปิดการค้นตามความหมายไว้ไหม
+let serialWaiting = 0;          // งานแก้ไขดัชนีที่รอคิวอยู่ (ให้ AI หยุดพักเมื่อมีงานอื่นรอ)
 let loaded = null;
 
 function load() {
@@ -168,14 +171,45 @@ const commands = {
     for (const key of keys) records.delete(key);
   },
 
+  async setSemantic({ on }) {
+    semOn = on;
+  },
+
+  // ให้ AI อ่านไฟล์ที่ยังไม่ได้อ่าน (งานนาน ทำทีละไฟล์ เก็บผลทันที ปิดแท็บแล้วมาทำต่อได้)
+  // หยุดเองเมื่อผู้ใช้ปิดสวิตช์ หรือมีงานทำดัชนีรอคิวอยู่  คืน { done, left, stopped }
+  async embed(_, progress) {
+    if (!semOn) return { done: 0, left: 0, stopped: true };
+    await loadModel((model) => progress({ model }));
+    const todo = [...records.values()].filter(needsEmbedding);
+    let done = 0;
+    for (const rec of todo) {
+      if (!semOn || serialWaiting > 0) return { done, left: todo.length - done, stopped: true };
+      progress({ done, total: todo.length, name: rec.name });
+      const sem = await embedRecord(rec);
+      done++;
+      if (records.get(rec.key) !== rec) continue;         // ไฟล์ถูกเอาออกไประหว่างที่ AI อ่านอยู่
+      rec.sem = sem;
+      const { stem, stemLow, nameLow, low, ...plain } = rec;   // ไม่เก็บส่วนที่ prepare() สร้างขึ้นเอง
+      await put("files", plain);
+    }
+    return { done, left: 0, stopped: false };
+  },
+
+  // ค้นตามความหมาย  skip = ไฟล์ที่การค้นแบบคำเจอไปแล้ว
+  async semantic({ query, types, folderId, skip }) {
+    if (!semOn) return { results: [] };
+    await loadModel();
+    return { results: await semanticSearch(records.values(), query, { types, folderId, skip }) };
+  },
+
   async search({ query, types, folderId, near }) {
     return search(records.values(), query, { types, folderId, near });
   },
 
   // ข้อความช่วงยาวรอบ ๆ คำที่เจอ สำหรับพรีวิวในการ์ด
-  async context({ key, chunk, terms }) {
+  async context({ key, chunk, terms, at }) {
     const rec = records.get(key);
-    return rec ? context(rec, chunk, terms) : null;
+    return rec ? context(rec, chunk, terms, at ?? null) : null;
   },
 
   // วาดหน้าหนึ่งของ PDF / TIFF เป็นรูป สำหรับพรีวิว
@@ -186,16 +220,19 @@ const commands = {
 
 // งานที่แก้ไขดัชนีทำทีละงาน ต่อคิวกัน  ส่วนการค้นหาแทรกได้ทันที
 let queue = Promise.resolve();
-const SERIAL = new Set(["scan", "scanFiles", "removeFolder"]);
+const SERIAL = new Set(["scan", "scanFiles", "removeFolder", "embed"]);
 
 self.onmessage = (event) => {
   const { id, cmd, args } = event.data;
+  const serial = SERIAL.has(cmd);
+  if (serial) serialWaiting++;
   const run = async () => {
+    if (serial) serialWaiting--;
     await load();
     const progress = (info) => self.postMessage({ id, progress: info });
     return commands[cmd](args || {}, progress);
   };
-  const job = SERIAL.has(cmd) ? (queue = queue.then(run, run)) : run();
+  const job = serial ? (queue = queue.then(run, run)) : run();
   job.then(
     (result) => self.postMessage({ id, result, stats: stats() }),
     (error) => self.postMessage({ id, error: String(error && error.message || error) }),

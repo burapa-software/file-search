@@ -20,6 +20,12 @@ export const MAX_SIZE = 100 * 1024 * 1024;       // ข้ามไฟล์ใ�
 export const OCR_MAX_PDF_PAGES = 200;            // OCR ช้า จึงจำกัดจำนวนหน้าต่อไฟล์ PDF
 export const OCR_MAX_SIDE = 3500;                // รูปที่ใหญ่กว่านี้ (พิกเซล) ย่อลงก่อน OCR
 
+// ค้นตามความหมาย (AI)
+export const SEMANTIC_VERSION = 1;               // เปลี่ยนโมเดลหรือวิธีแบ่งข้อความเมื่อไร ให้เพิ่มเลขนี้ ทุกไฟล์จะถูก AI อ่านใหม่
+export const SEMANTIC_DIMS = 384;                // ความยาวเวกเตอร์ของโมเดล
+export const PASSAGE_CHARS = 200;                // แบ่งข้อความเป็นตอน ตอนละประมาณกี่ตัวอักษร
+export const MAX_PASSAGES = 40;                  // AI อ่านไม่เกินกี่ตอนต่อไฟล์ (ช้า จึงเลือกต้นของแต่ละหน้า/สไลด์/ชีตก่อน)
+
 export function extOf(name) {
   const dot = name.lastIndexOf(".");
   return dot > 0 ? name.slice(dot).toLowerCase() : "";

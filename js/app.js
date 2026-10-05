@@ -57,6 +57,47 @@ async function setOcr(on) {
   }
 }
 
+// ---------------- ค้นตามความหมาย (AI) ----------------
+// ปิดไว้เป็นค่าเริ่มต้น เพราะต้องโหลดโมเดลก้อนใหญ่ และ AI ใช้เวลาอ่านเอกสารนาน  ค่าที่เลือกจำไว้ในเบราว์เซอร์
+// ตอนนี้เปิดให้ใช้เฉพาะตอนทดสอบในเครื่อง: ไฟล์ไลบรารี AI และโมเดล (vendor/transformers, vendor/models) ยังไม่ได้ขึ้นเว็บจริง
+// เมื่อขึ้นแล้ว ให้เปลี่ยนค่านี้เป็น true
+const SEMANTIC_AVAILABLE = ["localhost", "127.0.0.1"].includes(location.hostname);
+const semOn = () => SEMANTIC_AVAILABLE && localStorage.getItem("semantic") === "on";
+let embedBusy = false, embedAgain = false;
+
+async function setSemantic(on) {
+  localStorage.setItem("semantic", on ? "on" : "off");
+  await call("setSemantic", { on });
+  if (on) syncSemantic();
+  else $("sem-status").textContent = "";
+  runSearch();
+}
+
+// ให้ AI อ่านไฟล์ที่ยังไม่ได้อ่าน  เรียกซ้ำได้เรื่อย ๆ (หลังทำดัชนีเสร็จ หลังเปิดสวิตช์) ถ้ากำลังทำอยู่จะจดไว้ว่าต้องวนอีกรอบ
+async function syncSemantic() {
+  if (!semOn()) return;
+  if (embedBusy) { embedAgain = true; return; }
+  embedBusy = true;
+  const status = $("sem-status");
+  status.className = "sem-status";
+  try {
+    let r;
+    do {
+      embedAgain = false;
+      r = await call("embed", {}, (p) => {
+        if (p.model) status.textContent = `กำลังโหลดโมเดล AI ${Math.round(p.model.loaded / 1e6)} / ${Math.round(p.model.total / 1e6)} MB`;
+        else status.textContent = `AI กำลังอ่านเอกสาร ${num(p.done + 1)} / ${num(p.total)} · ${p.name}`;
+      });
+      status.textContent = !semOn() ? "" : r.left ? `AI พักไว้ก่อน เหลืออีก ${num(r.left)} ไฟล์` : "AI อ่านเอกสารครบแล้ว";
+      if (r.done) runSearch();
+    } while (semOn() && (embedAgain || r.left));    // ถูกพักเพราะมีงานทำดัชนีแทรก: ต่อคิวใหม่ จะได้ทำต่อหลังงานนั้น
+  } catch (e) {
+    status.classList.add("error");
+    status.textContent = `ค้นตามความหมายใช้ไม่ได้: ${e.message}`;
+  }
+  embedBusy = false;
+}
+
 // ---------------- โฟลเดอร์ ----------------
 let folders = [];               // { id, name, kind: "handle" | "files", handle }
 const state = new Map();        // id → สถานะชั่วคราวบนหน้าจอ { busy, progress, needsPermission, note, error }
@@ -64,10 +105,34 @@ const sessionFiles = new Map(); // id → Map(rel → File) ของโฟล�
 
 const stateOf = (id) => state.get(id) || state.set(id, {}).get(id);
 
+// ย่อ/ขยายการ์ดโฟลเดอร์  ตอนย่อเหลือแค่หัวการ์ดกับสรุปสั้น ๆ  ค่าที่เลือกจำไว้ในเบราว์เซอร์
+const foldersCollapsed = () => localStorage.getItem("folders-collapsed") === "yes";
+
+function renderCollapse() {
+  const collapsed = foldersCollapsed();
+  $("folders-body").hidden = collapsed;
+  $("folders-hint").hidden = collapsed;
+  $("folders-brief").hidden = !collapsed;
+  $("folders-toggle").textContent = collapsed ? "ขยาย ▾" : "ย่อ ▴";
+  $("folders-toggle").ariaExpanded = String(!collapsed);
+}
+
+function toggleFolders() {
+  localStorage.setItem("folders-collapsed", foldersCollapsed() ? "no" : "yes");
+  renderCollapse();
+}
+
 function renderFolders() {
   const list = $("folders");
   list.replaceChildren();
   $("no-folders").hidden = folders.length > 0;
+
+  // สรุปที่แสดงตอนย่อการ์ด: จำนวนโฟลเดอร์และไฟล์ และสิ่งที่ผู้ใช้ควรรู้แม้ไม่ได้เปิดดู
+  const totalFiles = folders.reduce((sum, f) => sum + ((stats[f.id] || {}).total || 0), 0);
+  const brief = [`${num(folders.length)} โฟลเดอร์`, `${num(totalFiles)} ไฟล์`];
+  if (folders.some((f) => stateOf(f.id).busy)) brief.push("กำลังทำดัชนี");
+  if (folders.some((f) => stateOf(f.id).needsPermission)) brief.push("มีโฟลเดอร์รออนุญาต กดขยายเพื่อดู");
+  $("folders-brief").textContent = `(${brief.join(" · ")})`;
   for (const folder of folders) {
     const st = stateOf(folder.id);
     const s = stats[folder.id] || { total: 0, errors: 0, needsOcr: 0 };
@@ -127,6 +192,7 @@ async function run(folder, cmd, args) {
   st.busy = false;
   renderFolders();
   runSearch();
+  syncSemantic();                                 // ไฟล์ใหม่หรือไฟล์ที่เปลี่ยน ให้ AI อ่านต่อ
 }
 
 const scan = (folder) => run(folder, "scan", { handle: folder.handle });
@@ -244,7 +310,34 @@ async function runSearch(opts) {
     else summary.append(r.nearTotal ? ` · และคำสะกดใกล้เคียงอีก ${num(r.nearTotal)} ไฟล์` : " · ไม่พบคำสะกดใกล้เคียงเพิ่ม");
   }
   renderResults(true);
+  if (semOn() && total) addSemantic(query, mine);
 }
+
+// ต่อท้ายผลค้นด้วยไฟล์ที่ "ความหมายใกล้เคียง" (AI) มาช้ากว่าผลค้นแบบคำเล็กน้อย จึงเติมทีหลัง
+async function addSemantic(query, mine) {
+  const note = el("span", { textContent: " · กำลังหาตามความหมาย…" });
+  $("summary").append(note);
+  let r;
+  try {
+    r = await call("semantic", { query, types: [...selectedTypes], folderId: $("folder-filter").value || null, skip: last.results.map((x) => x.key) });
+  } catch (e) {
+    if (mine === searchSeq) note.textContent = " · ค้นตามความหมายไม่สำเร็จ";
+    return;
+  }
+  if (mine !== searchSeq) return;                 // มีการพิมพ์ใหม่แล้ว
+  const before = last.results.length;
+  note.textContent = !r.results.length ? "" : before ? ` · และความหมายใกล้เคียงอีก ${num(r.results.length)} ไฟล์` : ` · แต่พบ ${num(r.results.length)} ไฟล์ที่ความหมายใกล้เคียง`;
+  if (!r.results.length) return;
+  last.results.push(...r.results);
+  if (shown === before) renderResults(false);     // แสดงครบอยู่แล้ว: ต่อท้ายได้เลย การ์ดเดิม (และพรีวิวที่เปิดไว้) ไม่ถูกแตะ
+  else $("more").hidden = false;
+  $("results").querySelectorAll(".order").forEach((badge, i) => { badge.textContent = `(${num(i + 1)}/${num(last.results.length)})`; });
+}
+
+// ผลค้นแต่ละรายการอยู่กลุ่มไหน: ตรงตัว / คำสะกดใกล้เคียง / ความหมายใกล้เคียง
+const groupOf = (r) => (r.sem ? "sem" : r.near ? "near" : "exact");
+const GROUP_TITLE = { near: "คำสะกดใกล้เคียง", sem: "ความหมายใกล้เคียง · AI เลือกให้ อาจไม่ตรงทุกไฟล์" };
+const GROUP_TAG = { near: "ใกล้เคียง", sem: "ความหมาย" };
 
 // ใส่แถบสีให้คำที่ค้น  สร้างเป็นโหนดข้อความ ไม่ใช้ innerHTML ข้อความในไฟล์จึงแทรกโค้ดในหน้าเว็บไม่ได้
 function highlight(text, terms) {
@@ -280,9 +373,11 @@ function renderResults(reset) {
   for (const [i, r] of next.entries()) {
     const folder = folders.find((f) => f.id === r.folderId);
     const marks = marksOf(r);
-    // ขึ้นหัวข้อคั่นก่อนไฟล์แรกที่เป็นคำสะกดใกล้เคียง เมื่อมีผลแบบตรงตัวอยู่ข้างบน
-    if (r.near && shown + i > 0 && !last.results[shown + i - 1].near) {
-      list.append(el("li", { className: "divider", textContent: "คำสะกดใกล้เคียง" }));
+    // ขึ้นหัวข้อคั่นก่อนไฟล์แรกของกลุ่ม "คำสะกดใกล้เคียง" และ "ความหมายใกล้เคียง"
+    // (คำสะกดใกล้เคียงที่ขึ้นเป็นกลุ่มแรก ไม่ต้องมีหัวข้อ เพราะบรรทัดสรุปด้านบนบอกไว้แล้ว)
+    const group = groupOf(r), at = shown + i;
+    if (group !== "exact" && (at === 0 ? group === "sem" : groupOf(last.results[at - 1]) !== group)) {
+      list.append(el("li", { className: `divider ${group}`, textContent: GROUP_TITLE[group] }));
     }
     const open = el("button", { className: "small", textContent: "เปิดไฟล์", onclick: () => openFile(r, open) });
     // ปุ่มพรีวิว: กดครั้งแรกสร้างแผงพรีวิวต่อท้ายการ์ด กดอีกครั้งซ่อน
@@ -299,7 +394,10 @@ function renderResults(reset) {
         el("span", { className: "name-line" },
           el("span", { className: "order", textContent: `(${num(shown + i + 1)}/${num(last.results.length)})` }),   // ลำดับไฟล์ในผลค้น
           el("span", { className: "title" }, highlight(r.name, marks)),
-          ...(r.near ? [el("span", { className: "near-tag", textContent: "ใกล้เคียง", title: `ในไฟล์สะกดว่า ${r.marks.join(", ")}` })] : [])),
+          ...(group === "exact" ? [] : [el("span", {
+            className: `near-tag ${group}`, textContent: GROUP_TAG[group],
+            title: r.sem ? `ความใกล้เคียง ${Math.round(r.score * 100)}%` : `ในไฟล์สะกดว่า ${r.marks.join(", ")}`,
+          })])),
         el("span", { className: "row actions" }, preview, open)),
       el("div", { className: "meta", textContent: `${r.type} · แก้ไขล่าสุด ${formatDate(r.mtime)} · เจอ ${num(r.hitCount)} ตำแหน่ง` }),
       el("div", { className: "path", textContent: `${folder ? folder.name : "?"}/${r.rel}` }),
@@ -385,7 +483,7 @@ function previewPanel(r) {
     if (imageUrl) { URL.revokeObjectURL(imageUrl); imageUrl = null; }
     imageButton.hidden = false;
 
-    const c = await call("context", { key: r.key, chunk: spots[index].chunk, terms: marksOf(r) });
+    const c = await call("context", { key: r.key, chunk: spots[index].chunk, terms: marksOf(r), at: r.sem ? spots[index].pos : null });
     pageNow = c ? parseInt((/^หน้า (\d+)$/.exec(c.loc) || [])[1] || "1", 10) : 1;
     where.textContent = c ? `${spots.length > 1 ? `ตำแหน่งที่ ${index + 1} จาก ${spots.length} · ` : ""}${c.loc}` : "";
     text.replaceChildren();
@@ -422,6 +520,8 @@ async function start() {
   $("unsupported").hidden = "showDirectoryPicker" in window;
   $("add-folder").disabled = !("showDirectoryPicker" in window);
   $("add-folder").onclick = addFolder;
+  $("folders-toggle").onclick = toggleFolders;
+  renderCollapse();
   $("add-fallback").onclick = () => $("fallback-input").click();
   $("fallback-input").onchange = (e) => addFallback(e.target.files).finally(() => { e.target.value = ""; });
   $("more").onclick = () => renderResults(false);
@@ -432,8 +532,13 @@ async function start() {
   $("ocr").checked = ocrOn();
   $("ocr").onchange = (e) => setOcr(e.target.checked);
 
+  $("semantic").closest("label").hidden = !SEMANTIC_AVAILABLE;
+  $("semantic").checked = semOn();
+  $("semantic").onchange = (e) => setSemantic(e.target.checked);
+
   folders = await getAll("folders");
   await call("setOcr", { on: ocrOn() });
+  await call("setSemantic", { on: semOn() });
   renderFolders();
 
   // โฟลเดอร์ที่เบราว์เซอร์ยังอนุญาตอยู่ อัปเดตดัชนีให้เองตอนเปิดหน้า  ที่เหลือรอให้ผู้ใช้กด "อนุญาต"
@@ -442,6 +547,7 @@ async function start() {
     if ((await folder.handle.queryPermission({ mode: "read" })) === "granted") scan(folder);
     else { stateOf(folder.id).needsPermission = true; renderFolders(); }
   }
+  syncSemantic();                                 // ต่อคิวหลังการอัปเดตดัชนีข้างบน
 }
 
 // สำหรับการทดสอบอัตโนมัติ: เพิ่มโฟลเดอร์จาก handle โดยไม่ผ่านหน้าต่างเลือกโฟลเดอร์

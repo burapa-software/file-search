@@ -21,9 +21,14 @@ export function prepare(rec) {
 
 // ข้อความช่วงยาวรอบ ๆ คำที่เจอ สำหรับพรีวิวในการ์ด (ยาวกว่า snippet หลายเท่า แต่ไม่ส่งทั้งไฟล์)
 //   chunk = ลำดับชิ้นข้อความในไฟล์  คืน { loc, text, cutStart, cutEnd } หรือ null ถ้าไม่มีข้อความ
-export function context(rec, chunk, terms, before = 500, after = 1500) {
+//   at = เริ่มแสดงจากตำแหน่งนี้เลย (ใช้กับผลค้นตามความหมาย ซึ่งไม่มีคำค้นให้หาในข้อความ)
+export function context(rec, chunk, terms, at = null, before = 500, after = 1500) {
   const c = rec.chunks[chunk];
   if (!c) return null;
+  if (at !== null) {
+    const end = Math.min(c.text.length, at + after);
+    return { loc: c.loc, text: c.text.slice(at, end), cutStart: at > 0, cutEnd: end < c.text.length };
+  }
   const low = rec.low[chunk];
   let pos = Infinity;
   for (const t of terms) {

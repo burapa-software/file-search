@@ -27,13 +27,23 @@
 
     <section class="card" aria-labelledby="folders-title">
       <div class="row between">
-        <h2 id="folders-title">โฟลเดอร์ที่ค้น <span class="hint">(สามารถเพิ่มได้หลายโฟลเดอร์)</span></h2>
-        <button id="add-folder" class="primary green">เพิ่มโฟลเดอร์</button>
+        <!-- ตอนขยาย: คำแนะนำในวงเล็บ  ตอนย่อ: สรุปจำนวนโฟลเดอร์และไฟล์แทน -->
+        <h2 id="folders-title">โฟลเดอร์ที่ค้น <span id="folders-hint" class="hint">(สามารถเพิ่มได้หลายโฟลเดอร์)</span><span id="folders-brief" class="hint" hidden></span></h2>
+        <span class="row card-actions">
+          <button id="add-folder" class="primary green">เพิ่มโฟลเดอร์</button>
+          <button id="folders-toggle" aria-controls="folders-body" aria-expanded="true">ย่อ ▴</button>
+        </span>
       </div>
+      <div id="folders-body">
       <ul id="folders" class="folders"></ul>
       <label class="option">
         <input id="ocr" type="checkbox">
         <span>อ่านตัวหนังสือในรูปภาพและเอกสารสแกน (OCR) <span class="muted">ช้ากว่าปกติมาก หลายวินาทีต่อรูปหรือต่อหน้า</span></span>
+      </label>
+      <label class="option">
+        <input id="semantic" type="checkbox">
+        <span>ค้นตามความหมายด้วย AI (ทดลอง) <span class="muted">เจอไฟล์ที่พูดเรื่องเดียวกันแม้ใช้คำไม่เหมือนกัน ครั้งแรกต้องโหลดโมเดลราว 160 MB และ AI ใช้เวลาอ่านเอกสารนาน</span>
+          <span id="sem-status" class="sem-status" role="status"></span></span>
       </label>
       <p id="no-folders" class="muted" hidden>ยังไม่มีโฟลเดอร์ กด "เพิ่มโฟลเดอร์" แล้วเลือกโฟลเดอร์ที่เก็บเอกสาร เพิ่มได้หลายโฟลเดอร์</p>
       <details class="help">
@@ -43,6 +53,7 @@
         <button id="add-fallback">เลือกโฟลเดอร์ด้วยวิธีสำรอง</button>
         <input id="fallback-input" type="file" webkitdirectory multiple hidden>
       </details>
+      </div>
     </section>
 
     <section class="search" aria-label="ตัวกรอง">
