@@ -8,6 +8,7 @@ import { getAll, put, removeMany } from "./db.js";
 import { recognize, release } from "./ocr.js";
 import { embedRecord, loadModel, needsEmbedding, semanticSearch } from "./semantic.js";
 import { TAG_LOC, TAGGABLE, TEXT_IMAGE_CHARS, loadVision, tagImage } from "./tags.js";
+import { findDuplicates } from "./dupes.js";
 
 // โฟลเดอร์ที่ข้าม ไม่ต้องอ่าน
 const SKIP_DIRS = new Set(["$RECYCLE.BIN", "System Volume Information", "node_modules", "__pycache__"]);
@@ -17,6 +18,8 @@ let ocrOn = false;              // ผู้ใช้เปิด OCR ไว้�
 let semOn = false;              // ผู้ใช้เปิดการค้นตามความหมายไว้ไหม
 let tagsOn = false;             // ผู้ใช้เปิดให้ AI ดูรูปไว้ไหม
 let serialWaiting = 0;          // งานแก้ไขดัชนีที่รอคิวอยู่ (ให้ AI หยุดพักเมื่อมีงานอื่นรอ)
+let dupes = null;               // ผลการเทียบไฟล์ซ้ำ/คล้าย (คิดเมื่อถูกถามครั้งแรก ทิ้งเมื่อดัชนีเปลี่ยน)
+const dupeData = () => (dupes ??= findDuplicates(records.values()));
 let loaded = null;
 
 function load() {
@@ -144,6 +147,7 @@ async function index(folderId, items, failedDirs, progress) {
     };
     await put("files", rec);
     records.set(key, prepare(rec));
+    dupes = null;
     if (error) count.failed++;
     if (old) count.updated++; else count.added++;
   }
@@ -158,6 +162,7 @@ async function index(folderId, items, failedDirs, progress) {
   }
   await removeMany("files", gone);
   for (const key of gone) records.delete(key);
+  if (gone.length) dupes = null;
   count.removed = gone.length;
   await release();                              // คืนหน่วยความจำของตัว OCR
   return { ...count, failedDirs };
@@ -195,6 +200,7 @@ const commands = {
     const keys = [...records.values()].filter((r) => r.folderId === folderId).map((r) => r.key);
     await removeMany("files", keys);
     for (const key of keys) records.delete(key);
+    dupes = null;
   },
 
   async setTags({ on }) {
@@ -239,6 +245,20 @@ const commands = {
 
   async search({ query, types, folderId, near }) {
     return search(records.values(), query, { types, folderId, near });
+  },
+
+  // ไฟล์ที่ซ้ำ/คล้ายกับไฟล์ที่ระบุ (ใช้ติดป้ายบนการ์ดผลค้น)  คืน { key: [{ ...ข้อมูลไฟล์, exact, sim }] } เฉพาะไฟล์ที่มี
+  async neighbors({ keys }) {
+    const { neighbors } = dupeData();
+    const out = {};
+    for (const key of keys) if (neighbors.has(key)) out[key] = neighbors.get(key);
+    return out;
+  },
+
+  // กลุ่มไฟล์ที่ซ้ำ/คล้ายกันทั้งหมดในดัชนี
+  async duplicates() {
+    const { groups, totalGroups, totalFiles } = dupeData();
+    return { groups, totalGroups, totalFiles };
   },
 
   // ข้อความช่วงยาวรอบ ๆ คำที่เจอ สำหรับพรีวิวในการ์ด

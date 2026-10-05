@@ -64,7 +64,10 @@
     <section class="search" aria-label="ตัวกรอง">
       <div class="row filters">
         <div id="types" class="chips" role="group" aria-label="ประเภทไฟล์"></div>
-        <select id="folder-filter" aria-label="ค้นเฉพาะในโฟลเดอร์" hidden></select>
+        <span class="row">
+          <select id="folder-filter" aria-label="ค้นเฉพาะในโฟลเดอร์" hidden></select>
+          <button id="show-dupes" class="small" aria-pressed="false" title="ดูกลุ่มไฟล์ที่ข้อความซ้ำกันหรือคล้ายกันมาก จากทุกโฟลเดอร์">ไฟล์ซ้ำ/คล้ายกัน</button>
+        </span>
       </div>
     </section>
 

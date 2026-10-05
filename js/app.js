@@ -304,10 +304,12 @@ async function runSearch(opts) {
   const summary = $("summary");
   summary.className = "summary";
   if (!query.trim()) {
+    if (dupesView) return showDuplicates();       // กำลังดูหน้ารวมไฟล์ซ้ำอยู่ (ดัชนีเพิ่งเปลี่ยน): แสดงหน้านั้นใหม่ ไม่ใช่ล้างทิ้ง
     last = { results: [], terms: [] };
     summary.textContent = "";
     return renderResults(true);
   }
+  setDupesView(false);                            // พิมพ์คำค้น = กลับมาหน้าผลค้น
   const r = await call("search", { query, types: [...selectedTypes], folderId: $("folder-filter").value || null, near });
   if (mine !== searchSeq) return;               // มีการพิมพ์ใหม่แล้ว ทิ้งผลชุดเก่า
   last = r;
@@ -334,7 +336,104 @@ async function runSearch(opts) {
     else summary.append(r.nearTotal ? ` · และคำสะกดใกล้เคียงอีก ${num(r.nearTotal)} ไฟล์` : " · ไม่พบคำสะกดใกล้เคียงเพิ่ม");
   }
   renderResults(true);
+  addDupBadges(mine);
   if (semOn() && total) addSemantic(query, mine);
+}
+
+// ---------------- ไฟล์ซ้ำ/คล้ายกัน ----------------
+const formatSize = (bytes) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+
+// แถวของไฟล์หนึ่งในรายการไฟล์ซ้ำ/คล้าย  tag = ป้ายหน้าแถว (ข้อความ หรือ null)  newest = ติดป้าย "ใหม่สุด"
+function dupRow(file, tag, newest) {
+  const folder = folders.find((f) => f.id === file.folderId);
+  const open = el("button", { className: "small", textContent: "เปิดไฟล์", onclick: () => openFile(file, open) });
+  return el("div", { className: "dup-row" },
+    ...(tag ? [el("span", { className: "dup-tag", textContent: tag })] : []),
+    el("span", { className: "who" },
+      el("span", { className: "name", textContent: file.name }),
+      el("span", { className: "where", textContent: `${folder ? folder.name : "?"}/${file.rel} · ${file.type} · แก้ไขล่าสุด ${formatDate(file.mtime)} · ${formatSize(file.size)}` })),
+    ...(newest ? [el("span", { className: "dup-tag newest", textContent: "ใหม่สุด" })] : []),
+    open);
+}
+
+// ติดปุ่ม "ซ้ำ n · คล้าย m" บนการ์ดผลค้นที่มีไฟล์ซ้ำ/คล้าย  กดแล้วกางรายการไฟล์พวกนั้น
+function addDupBadge(item, r) {
+  const list = last.dups && last.dups[r.key];
+  if (!list || item.querySelector(".dup-badge")) return;
+  const exact = list.filter((x) => x.exact).length, similar = list.length - exact;
+  const label = [exact ? `ซ้ำ ${num(exact)} ไฟล์` : "", similar ? `คล้าย ${num(similar)} ไฟล์` : ""].filter(Boolean).join(" · ");
+  let panel = null;
+  const badge = el("button", { className: "small dup-badge", textContent: `มีไฟล์${label}`, ariaExpanded: "false" });
+  badge.onclick = () => {
+    if (!panel) {
+      const newest = Math.max(r.mtime, ...list.map((x) => x.mtime));
+      panel = el("div", { className: "dup-list" },
+        ...list.map((x) => dupRow(x, x.exact ? "ซ้ำ" : `คล้าย ${Math.round(x.sim * 100)}%`, x.mtime === newest && x.mtime > r.mtime)));
+      badge.after(panel);
+    } else panel.hidden = !panel.hidden;
+    badge.ariaExpanded = String(!panel.hidden);
+  };
+  item.querySelector(".path").after(badge);
+}
+
+// ถามตัวทำดัชนีว่าผลค้นชุดนี้ไฟล์ไหนมีไฟล์ซ้ำ/คล้ายบ้าง แล้วติดป้ายให้การ์ดที่แสดงอยู่ (มาช้ากว่าผลค้นเล็กน้อย)
+async function addDupBadges(mine) {
+  if (!last.results.length) return;
+  let dups;
+  try {
+    dups = await call("neighbors", { keys: last.results.map((x) => x.key) });
+  } catch (e) {
+    return;                                       // เทียบไม่สำเร็จ: ไม่มีป้าย แต่ผลค้นยังใช้ได้ตามปกติ
+  }
+  if (mine !== searchSeq) return;
+  last.dups = dups;
+  for (const item of $("results").querySelectorAll("li[data-key]")) {
+    const r = last.results.find((x) => x.key === item.dataset.key);
+    if (r) addDupBadge(item, r);
+  }
+}
+
+// หน้ารวม: แสดงทุกกลุ่มไฟล์ที่ซ้ำ/คล้ายกันในดัชนี แทนที่ผลค้น  ปุ่ม "ไฟล์ซ้ำ/คล้ายกัน" กดเปิด กดอีกครั้งปิด
+let dupesView = false;
+function setDupesView(on) {
+  dupesView = on;
+  $("show-dupes").ariaPressed = String(on);
+}
+
+function toggleDuplicates() {
+  if (!dupesView) return showDuplicates();
+  setDupesView(false);
+  runSearch();
+}
+
+async function showDuplicates() {
+  const mine = ++searchSeq;
+  const summary = $("summary");
+  setDupesView(true);
+  $("query").value = "";
+  last = { results: [], terms: [] };
+  renderResults(true);
+  summary.className = "summary";
+  summary.textContent = "กำลังเทียบไฟล์";
+  let r;
+  try {
+    r = await call("duplicates");
+  } catch (e) {
+    summary.textContent = `เทียบไฟล์ไม่สำเร็จ: ${e.message}`;
+    return;
+  }
+  if (mine !== searchSeq) return;
+  if (!r.totalGroups) {
+    summary.textContent = "ไม่พบไฟล์ที่ข้อความซ้ำกันหรือคล้ายกันมาก";
+    return;
+  }
+  summary.textContent = `พบ ${num(r.totalGroups)} กลุ่มไฟล์ที่ซ้ำหรือคล้ายกัน รวม ${num(r.totalFiles)} ไฟล์` +
+    (r.totalGroups > r.groups.length ? ` (แสดง ${num(r.groups.length)} กลุ่มใหญ่สุด)` : "") + " · เทียบจากข้อความในไฟล์ เว็บไม่ลบไฟล์ให้";
+  $("results").replaceChildren(...r.groups.map((g, i) => el("li", {},
+    el("div", { className: "name-line" },
+      el("span", { className: "order", textContent: `(${num(i + 1)}/${num(r.groups.length)})` }),
+      el("span", { className: "title", textContent: g.exact ? `ข้อความซ้ำกันทุกตัวอักษร ${num(g.files.length)} ไฟล์` : `คล้ายกัน ${num(g.files.length)} ไฟล์ · เหมือนกันราว ${Math.round(g.sim * 100)}% ขึ้นไป` })),
+    el("div", { className: "dup-list" }, ...g.files.map((f, j) => dupRow(f, null, j === 0 && f.mtime > g.files[g.files.length - 1].mtime))))));
 }
 
 // ต่อท้ายผลค้นด้วยไฟล์ที่ "ความหมายใกล้เคียง" (AI) มาช้ากว่าผลค้นแบบคำเล็กน้อย จึงเติมทีหลัง
@@ -355,6 +454,7 @@ async function addSemantic(query, mine) {
   last.results.push(...r.results);
   if (shown === before) renderResults(false);     // แสดงครบอยู่แล้ว: ต่อท้ายได้เลย การ์ดเดิม (และพรีวิวที่เปิดไว้) ไม่ถูกแตะ
   else $("more").hidden = false;
+  addDupBadges(mine);                             // ผลที่เพิ่งต่อท้ายก็อาจมีไฟล์ซ้ำ/คล้าย
   $("results").querySelectorAll(".order").forEach((badge, i) => { badge.textContent = `(${num(i + 1)}/${num(last.results.length)})`; });
 }
 
@@ -431,6 +531,8 @@ function renderResults(reset) {
       item.append(el("details", {}, el("summary", { textContent: `ดูอีก ${num(r.hits.length - 3)} ตำแหน่ง` }),
         ...r.hits.slice(3).map((h) => hitLine(h, marks))));
     }
+    item.dataset.key = r.key;
+    addDupBadge(item, r);                         // (ถ้ารู้แล้วว่าไฟล์นี้มีไฟล์ซ้ำ/คล้าย เช่น ตอนกด "แสดงเพิ่ม")
     list.append(item);
   }
   shown += next.length;
@@ -600,6 +702,7 @@ async function start() {
   $("folders-gear").onclick = toggleFolders;
   $("mic").hidden = !speechApi();
   $("mic").onclick = toggleVoice;
+  $("show-dupes").onclick = toggleDuplicates;
   $("add-fallback").onclick = () => $("fallback-input").click();
   $("fallback-input").onchange = (e) => addFallback(e.target.files).finally(() => { e.target.value = ""; });
   $("more").onclick = () => renderResults(false);

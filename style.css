@@ -232,6 +232,17 @@ select { font-size: 14px; max-width: 100%; }
   color: var(--warn-text); font-size: 14px; font-weight: 600;
 }
 .summary button { margin-left: 6px; }
+/* ไฟล์ซ้ำ/คล้าย: ปุ่มป้ายบนการ์ดผลค้น รายการใต้การ์ด และการ์ดกลุ่มในหน้ารวม */
+#show-dupes[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.dup-badge { margin: 2px 0 6px; color: var(--warn-text); border-color: var(--warn-text); }
+.dup-list { margin: 0 0 8px; padding: 8px 12px; background: var(--bg); border-radius: 8px; }
+.dup-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 6px 0; }
+.dup-row + .dup-row { border-top: 1px solid var(--line); }
+.dup-row .who { flex: 1; min-width: 200px; overflow-wrap: anywhere; }
+.dup-row .name { color: var(--green); font-weight: 600; }
+.dup-row .where { display: block; color: var(--muted); font-size: 13px; }
+.dup-tag { flex-shrink: 0; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; color: var(--warn-text); background: var(--warn-bg); }
+.dup-tag.newest { color: var(--green); background: rgba(var(--green-glow), 0.14); }
 .results .meta { color: var(--muted); font-size: 14px; }
 .results .path {
   font-size: 13px;
