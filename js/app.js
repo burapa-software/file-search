@@ -206,7 +206,9 @@ function renderTypes() {
   }
 }
 
-async function runSearch() {
+// opts.near = true: ผู้ใช้กดขอให้หาคำสะกดใกล้เคียงเพิ่ม (ถ้าไม่เจอแบบตรงตัวเลย ระบบหาให้เองอยู่แล้ว)
+async function runSearch(opts) {
+  const near = opts?.near === true;
   const query = $("query").value;
   const mine = ++searchSeq;
   const summary = $("summary");
@@ -216,21 +218,30 @@ async function runSearch() {
     summary.textContent = "";
     return renderResults(true);
   }
-  const r = await call("search", { query, types: [...selectedTypes], folderId: $("folder-filter").value || null });
+  const r = await call("search", { query, types: [...selectedTypes], folderId: $("folder-filter").value || null, near });
   if (mine !== searchSeq) return;               // มีการพิมพ์ใหม่แล้ว ทิ้งผลชุดเก่า
   last = r;
   const total = Object.values(stats).reduce((sum, s) => sum + s.total, 0);
   if (!total) summary.textContent = "ยังไม่มีไฟล์ในดัชนี ให้เพิ่มโฟลเดอร์ก่อน";
-  else if (!r.results.length) summary.textContent = `ไม่พบคำว่า “${query.trim()}”`;
-  else if (r.loose && r.terms.length === 1) {
+  else if (!r.results.length) summary.textContent = `ไม่พบคำว่า “${query.trim()}”` + (r.canNear ? " และไม่พบคำที่สะกดใกล้เคียง" : "");
+  else if (r.near) {
+    summary.classList.add("loose");
+    summary.textContent = `ไม่พบ “${query.trim()}” แบบตรงตัว จึงแสดง ${num(r.nearTotal)} ไฟล์ที่มีคำสะกดใกล้เคียง`;
+  } else if (r.loose && r.terms.length === 1) {
     summary.classList.add("loose");
     summary.textContent = `ไม่พบ “${query.trim()}” ในเนื้อหา แต่พบในชื่อไฟล์ ${num(r.total)} ไฟล์`;
   } else if (r.loose) {
     summary.classList.add("loose");
     summary.textContent = `ไม่พบทุกคำในตำแหน่งเดียวกัน จึงแสดง ${num(r.total)} ไฟล์ที่มีครบทุกคำ โดยแต่ละคำอยู่คนละหน้า/สไลด์/ชีต หรืออยู่ในชื่อไฟล์`;
   } else {
-    const hits = r.results.reduce((sum, x) => sum + x.hitCount, 0);
-    summary.textContent = `พบใน ${num(r.total)} ไฟล์ รวม ${num(hits)} ตำแหน่ง` + (r.total > r.results.length ? ` (แสดง ${num(r.results.length)} ไฟล์แรก)` : "");
+    const exact = r.results.filter((x) => !x.near);
+    const hits = exact.reduce((sum, x) => sum + x.hitCount, 0);
+    summary.textContent = `พบใน ${num(r.total)} ไฟล์ รวม ${num(hits)} ตำแหน่ง` + (r.total > exact.length ? ` (แสดง ${num(exact.length)} ไฟล์แรก)` : "");
+  }
+  // เจอแบบตรงตัวแล้ว: มีปุ่มให้หาไฟล์ที่สะกดคำนี้เพี้ยนไปเพิ่มได้ (เช่น เอกสารสแกนที่ OCR อ่านวรรณยุกต์ตก)
+  if (r.total && r.canNear) {
+    if (!near) summary.append(" ", el("button", { className: "small", textContent: "หาคำสะกดใกล้เคียงเพิ่ม", onclick: () => runSearch({ near: true }) }));
+    else summary.append(r.nearTotal ? ` · และคำสะกดใกล้เคียงอีก ${num(r.nearTotal)} ไฟล์` : " · ไม่พบคำสะกดใกล้เคียงเพิ่ม");
   }
   renderResults(true);
 }
@@ -255,6 +266,9 @@ function formatDate(ms) {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+// คำที่ใช้ใส่แถบสีในผลค้นรายการหนึ่ง: ปกติคือคำค้น  ถ้าเป็นคำสะกดใกล้เคียง ใช้คำที่เจอจริงในไฟล์
+const marksOf = (r) => r.marks || last.terms;
+
 function hitLine(hit, terms) {
   return el("div", { className: "hit" }, el("b", { textContent: hit.loc }), " — ", highlight(hit.snippet, terms));
 }
@@ -265,6 +279,11 @@ function renderResults(reset) {
   const next = last.results.slice(shown, shown + PAGE_SIZE);
   for (const [i, r] of next.entries()) {
     const folder = folders.find((f) => f.id === r.folderId);
+    const marks = marksOf(r);
+    // ขึ้นหัวข้อคั่นก่อนไฟล์แรกที่เป็นคำสะกดใกล้เคียง เมื่อมีผลแบบตรงตัวอยู่ข้างบน
+    if (r.near && shown + i > 0 && !last.results[shown + i - 1].near) {
+      list.append(el("li", { className: "divider", textContent: "คำสะกดใกล้เคียง" }));
+    }
     const open = el("button", { className: "small", textContent: "เปิดไฟล์", onclick: () => openFile(r, open) });
     // ปุ่มพรีวิว: กดครั้งแรกสร้างแผงพรีวิวต่อท้ายการ์ด กดอีกครั้งซ่อน
     let panel = null;
@@ -279,15 +298,16 @@ function renderResults(reset) {
       el("div", { className: "row between top-row" },
         el("span", { className: "name-line" },
           el("span", { className: "order", textContent: `(${num(shown + i + 1)}/${num(last.results.length)})` }),   // ลำดับไฟล์ในผลค้น
-          el("span", { className: "title" }, highlight(r.name, last.terms))),
+          el("span", { className: "title" }, highlight(r.name, marks)),
+          ...(r.near ? [el("span", { className: "near-tag", textContent: "ใกล้เคียง", title: `ในไฟล์สะกดว่า ${r.marks.join(", ")}` })] : [])),
         el("span", { className: "row actions" }, preview, open)),
       el("div", { className: "meta", textContent: `${r.type} · แก้ไขล่าสุด ${formatDate(r.mtime)} · เจอ ${num(r.hitCount)} ตำแหน่ง` }),
       el("div", { className: "path", textContent: `${folder ? folder.name : "?"}/${r.rel}` }),
-      ...r.hits.slice(0, 3).map((h) => hitLine(h, last.terms)),
+      ...r.hits.slice(0, 3).map((h) => hitLine(h, marks)),
     );
     if (r.hits.length > 3) {
       item.append(el("details", {}, el("summary", { textContent: `ดูอีก ${num(r.hits.length - 3)} ตำแหน่ง` }),
-        ...r.hits.slice(3).map((h) => hitLine(h, last.terms))));
+        ...r.hits.slice(3).map((h) => hitLine(h, marks))));
     }
     list.append(item);
   }
@@ -365,7 +385,7 @@ function previewPanel(r) {
     if (imageUrl) { URL.revokeObjectURL(imageUrl); imageUrl = null; }
     imageButton.hidden = false;
 
-    const c = await call("context", { key: r.key, chunk: spots[index].chunk, terms: last.terms });
+    const c = await call("context", { key: r.key, chunk: spots[index].chunk, terms: marksOf(r) });
     pageNow = c ? parseInt((/^หน้า (\d+)$/.exec(c.loc) || [])[1] || "1", 10) : 1;
     where.textContent = c ? `${spots.length > 1 ? `ตำแหน่งที่ ${index + 1} จาก ${spots.length} · ` : ""}${c.loc}` : "";
     text.replaceChildren();
@@ -373,7 +393,7 @@ function previewPanel(r) {
       text.append(el("span", { className: "muted", textContent: "ไฟล์นี้ไม่มีข้อความให้พรีวิว" }));
       return;
     }
-    text.append(c.cutStart ? "… " : "", highlight(c.text, last.terms), c.cutEnd ? " …" : "");
+    text.append(c.cutStart ? "… " : "", highlight(c.text, marksOf(r)), c.cutEnd ? " …" : "");
     const mark = text.querySelector("mark");
     text.scrollTop = 0;
     if (mark) text.scrollTop = mark.getBoundingClientRect().top - text.getBoundingClientRect().top - 48;   // เลื่อนให้เห็นคำที่เจอ

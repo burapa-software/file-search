@@ -1,8 +1,10 @@
 // search.js — ค้นหาในดัชนีที่อยู่ในหน่วยความจำ (ไม่มีหน้าจอ)
-// กติกาเดียวกับ search_core.py ของเวอร์ชัน Python
+// ค้นแบบปกติและแบบผ่อนเงื่อนไขใช้กติกาเดียวกับ search_core.py ของเวอร์ชัน Python
+// ส่วนการหาคำสะกดใกล้เคียง (fuzzy.js) มีเฉพาะเวอร์ชันเว็บ
 
 import { normalize, terms as splitTerms } from "./normalize.js";
 import { FILE_TYPES } from "./types.js";
+import { allowance, nearest } from "./fuzzy.js";
 
 const MAX_FILES = 200;      // แสดงผลไม่เกินกี่ไฟล์
 const MAX_HITS = 30;        // ตำแหน่งที่เจอต่อไฟล์ ที่ส่งกลับไปแสดง
@@ -58,16 +60,64 @@ function result(rec, hits) {
 // ไฟล์ที่เจอหลายจุดขึ้นก่อน ถ้าเท่ากัน ไฟล์ที่แก้ไขล่าสุดขึ้นก่อน
 const ranked = (list) => list.sort((a, b) => b.hitCount - a.hitCount || b.mtime - a.mtime).slice(0, MAX_FILES);
 
+// หาไฟล์ที่มีคำ "สะกดใกล้เคียง" กับคำค้น (พิมพ์ผิด หรือ OCR อ่านเพี้ยน)
+//   ทุกคำค้นต้องเจอในไฟล์ จะตรงตัวหรือใกล้เคียงก็ได้ แต่ต้องมีอย่างน้อยหนึ่งคำที่ไม่ตรงตัว
+//   skip = ไฟล์ที่เจอแบบตรงตัวไปแล้ว ไม่ต้องดูซ้ำ
+function nearMatches(pool, lows, skip) {
+  const allow = lows.map(allowance);
+  if (!allow.some(Boolean)) return [];
+  const found = [];
+  for (const rec of pool) {
+    if (skip.has(rec.key)) continue;
+    const spots = [];                           // ตำแหน่งที่เจอ { chunk, word } (chunk = -1 คือชื่อไฟล์)
+    let errors = 0, all = true;
+    for (let t = 0; t < lows.length; t++) {
+      const mine = [];
+      let best = Infinity;
+      const look = (low, chunk) => {
+        const hit = nearest(low, lows[t], allow[t]);
+        if (!hit || hit.errors > best) return;
+        if (hit.errors < best) { best = hit.errors; mine.length = 0; }   // เก็บเฉพาะตำแหน่งที่ใกล้เคียงที่สุดของคำนี้
+        mine.push({ chunk, word: low.slice(hit.start, hit.end) });
+      };
+      rec.low.forEach(look);
+      look(rec.nameLow, -1);
+      if (best === Infinity) { all = false; break; }
+      errors += best;
+      spots.push(...mine);
+    }
+    if (!all || !errors) continue;
+
+    const hits = [];
+    const shown = new Set();
+    for (const s of spots.sort((a, b) => a.chunk - b.chunk)) {
+      if (shown.has(s.chunk)) continue;
+      shown.add(s.chunk);
+      if (s.chunk < 0) hits.push({ loc: "ชื่อไฟล์", snippet: rec.name });
+      else hits.push({ loc: rec.chunks[s.chunk].loc, chunk: s.chunk, snippet: makeSnippet(rec.chunks[s.chunk].text, rec.low[s.chunk], [s.word]) });
+    }
+    hits.sort((a, b) => (a.chunk ?? Infinity) - (b.chunk ?? Infinity));
+    // marks = คำที่เจอจริงในไฟล์ ใช้ใส่แถบสีแทนคำค้น (เพราะสะกดไม่เหมือนคำค้น)
+    found.push({ ...result(rec, hits), near: true, errors, marks: [...new Set(spots.map((s) => s.word))] });
+  }
+  // ไฟล์ที่สะกดต่างน้อยที่สุดขึ้นก่อน
+  return found.sort((a, b) => a.errors - b.errors || b.hitCount - a.hitCount || b.mtime - a.mtime);
+}
+
 // ค้นหาคำในดัชนี
 //   records : ระเบียนไฟล์ทั้งหมด (ผ่าน prepare แล้ว)
 //   types   : ชื่อประเภทที่ต้องการ เช่น ["Word", "PDF"]   (ว่าง = ทุกประเภท)
 //   folderId: ค้นเฉพาะโฟลเดอร์นี้                         (ว่าง = ทุกโฟลเดอร์)
-// คืน { results, loose, terms, total }
+//   near    : true = หาคำสะกดใกล้เคียงเพิ่มด้วย แม้จะเจอแบบตรงตัวแล้ว
+// คืน { results, loose, near, terms, total, nearTotal, canNear }
 //   loose = true เมื่อค้นแบบปกติไม่เจอ จึงผ่อนเงื่อนไข: ดูชื่อไฟล์เต็มรวมนามสกุล
 //           และยอมให้แต่ละคำอยู่คนละหน้า/สไลด์/ชีต
-export function search(records, query, { types = null, folderId = null } = {}) {
+//   near  = true เมื่อไม่เจอแบบตรงตัวเลย ผลทั้งหมดจึงเป็นคำสะกดใกล้เคียง
+//   total = จำนวนไฟล์ที่เจอแบบตรงตัว   nearTotal = จำนวนไฟล์ที่เจอแบบใกล้เคียง (ต่อท้ายใน results)
+//   canNear = คำค้นนี้หาคำใกล้เคียงได้ไหม (คำสั้นหรือตัวเลขล้วนหาไม่ได้)
+export function search(records, query, { types = null, folderId = null, near = false } = {}) {
   const terms = splitTerms(query);
-  if (!terms.length) return { results: [], loose: false, terms, total: 0 };
+  if (!terms.length) return { results: [], loose: false, near: false, terms, total: 0, nearTotal: 0, canNear: false };
   const lows = terms.map((t) => t.toLowerCase());
   const wanted = types && types.length ? new Set(types) : null;
   const pool = [];
@@ -89,9 +139,21 @@ export function search(records, query, { types = null, folderId = null } = {}) {
     if (lows.every((t) => rec.stemLow.includes(t))) hits.push({ loc: "ชื่อไฟล์", snippet: rec.stem });
     if (hits.length) found.push(result(rec, hits));
   }
-  if (found.length) return { results: ranked(found), loose: false, terms, total: found.length };
+  let loose = false;
+  if (!found.length) loose = looseMatches(pool, lows, found);
 
-  // แบบผ่อนเงื่อนไข: ไฟล์ที่ "มีครบทุกคำ" โดยแต่ละคำอยู่คนละตำแหน่งได้ หรืออยู่ในชื่อไฟล์เต็มก็ได้
+  // ไม่เจอแบบตรงตัวเลย หรือผู้ใช้ขอให้หาเพิ่ม → หาคำสะกดใกล้เคียง
+  const nearList = found.length && !near ? [] : nearMatches(pool, lows, new Set(found.map((r) => r.key)));
+  return {
+    results: [...ranked(found), ...nearList.slice(0, MAX_FILES)],
+    loose, near: !found.length && nearList.length > 0, terms,
+    total: found.length, nearTotal: nearList.length, canNear: lows.some(allowance),
+  };
+}
+
+// แบบผ่อนเงื่อนไข: ไฟล์ที่ "มีครบทุกคำ" โดยแต่ละคำอยู่คนละตำแหน่งได้ หรืออยู่ในชื่อไฟล์เต็มก็ได้
+// เติมผลลงใน found  คืน true ถ้าเจอ
+function looseMatches(pool, lows, found) {
   for (const rec of pool) {
     const hits = [];
     const shown = new Set();
@@ -112,5 +174,5 @@ export function search(records, query, { types = null, folderId = null } = {}) {
     }
     if (all) found.push(result(rec, hits));
   }
-  return { results: ranked(found), loose: found.length > 0, terms, total: found.length };
+  return found.length > 0;
 }

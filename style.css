@@ -183,6 +183,19 @@ select { font-size: 14px; max-width: 100%; }
 @media (prefers-reduced-motion: reduce) {
   .results .order { animation: none; background: rgba(var(--green-glow), 0.12); }
 }
+/* ป้ายบนการ์ดที่เจอด้วยคำสะกดใกล้เคียง และหัวข้อคั่นระหว่างผลตรงตัวกับผลใกล้เคียง */
+.results .near-tag {
+  flex-shrink: 0;
+  font-size: 12px; font-weight: 600;
+  color: var(--warn-text); background: var(--warn-bg);
+  padding: 1px 8px; border-radius: 999px;
+}
+.results > li.divider {
+  background: none; border: 0; border-top: 1px solid var(--line); border-radius: 0;
+  padding: 14px 0 0; margin: 20px 0 10px;
+  color: var(--warn-text); font-size: 14px; font-weight: 600;
+}
+.summary button { margin-left: 6px; }
 .results .meta { color: var(--muted); font-size: 14px; }
 .results .path {
   font-size: 13px;

@@ -168,8 +168,8 @@ const commands = {
     for (const key of keys) records.delete(key);
   },
 
-  async search({ query, types, folderId }) {
-    return search(records.values(), query, { types, folderId });
+  async search({ query, types, folderId, near }) {
+    return search(records.values(), query, { types, folderId, near });
   },
 
   // ข้อความช่วงยาวรอบ ๆ คำที่เจอ สำหรับพรีวิวในการ์ด
