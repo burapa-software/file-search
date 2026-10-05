@@ -67,10 +67,13 @@ async function* walk(dir, prefix, failedDirs) {
 }
 
 // ทำดัชนีโฟลเดอร์หนึ่ง  items = รายการไฟล์ทั้งหมดในโฟลเดอร์ (จาก walk หรือจากที่ผู้ใช้เลือกแบบสำรอง)
+// ทำสองรอบ: รอบแรกตรวจเร็ว ๆ ว่าไฟล์ไหนใหม่หรือเปลี่ยน (ส่วนใหญ่ไม่เปลี่ยน ข้ามได้เลย)  รอบสองอ่านเฉพาะไฟล์ที่ต้องอ่าน
+// ความคืบหน้าที่แจ้งกลับจึงแยกเป็น { checking, total } ตอนตรวจ และ { done, total, name } ตอนอ่าน (total = เฉพาะไฟล์ที่ต้องอ่าน)
 async function index(folderId, items, failedDirs, progress) {
   const seen = new Set();
   const count = { added: 0, updated: 0, unchanged: 0, removed: 0, failed: 0, kept: 0 };
   let lastReport = 0;
+  const todo = [];                              // ไฟล์ที่ต้องอ่านรอบนี้
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
@@ -80,7 +83,7 @@ async function index(folderId, items, failedDirs, progress) {
     seen.add(key);
     if (performance.now() - lastReport > 150) {
       lastReport = performance.now();
-      progress({ done: i, total: items.length, name: item.name });
+      progress({ checking: i, total: items.length });
     }
 
     let file;
@@ -98,6 +101,16 @@ async function index(folderId, items, failedDirs, progress) {
       count.unchanged++;
       continue;
     }
+    if (unchanged && old.error && file.size > MAX_SIZE) {   // ยังใหญ่เกินกำหนดเหมือนเดิม ไม่ต้องลองอ่าน
+      count.failed++;
+      continue;
+    }
+    todo.push({ item, key, ext, old, file, unchanged, textStillGood });
+  }
+
+  for (let i = 0; i < todo.length; i++) {
+    const { item, key, ext, old, file, unchanged, textStillGood } = todo[i];
+    progress({ done: i, total: todo.length, name: item.name });
 
     let error = null, chunks = [], needsOcr = false, needsTags = false;
     if (file.size > MAX_SIZE) {

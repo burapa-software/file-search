@@ -163,9 +163,13 @@ function renderFolders() {
     const actions = [];
 
     if (st.busy) {
+      // แถบความคืบหน้าขึ้นเฉพาะตอนมีไฟล์ใหม่หรือไฟล์ที่เปลี่ยนให้อ่านจริง ๆ (นับเฉพาะไฟล์พวกนั้น)
+      // ตอนที่แค่ตรวจว่ามีอะไรเปลี่ยนไหม แสดงจำนวนไฟล์ตามปกติ ต่อท้ายด้วยข้อความสั้น ๆ
       const p = st.progress || {};
-      if (p.total) {
-        status.append(el("progress", { max: p.total, value: p.done }), `กำลังทำดัชนี ${num(p.done)} / ${num(p.total)} · ${p.name}`);
+      if (p.name !== undefined) {
+        status.append(el("progress", { max: p.total, value: p.done }), `กำลังอ่านไฟล์ที่ใหม่หรือเปลี่ยน ${num(p.done + 1)} / ${num(p.total)} · ${p.name}`);
+      } else if (s.total) {
+        status.append(`${num(s.total)} ไฟล์ · กำลังตรวจหาไฟล์ใหม่`);
       } else {
         status.append(p.listing ? `กำลังไล่ดูไฟล์ พบแล้ว ${num(p.listing)}` : "กำลังเตรียม");
       }
