@@ -15,17 +15,17 @@ const DIMS = 384;
 // ไฟล์โมเดลก้อนใหญ่: โหลดเองเพื่อแสดงความคืบหน้า และเก็บไว้ในเบราว์เซอร์ (ครั้งต่อไปไม่ต้องโหลดใหม่)
 //   parts = ไฟล์ถูกหั่นเป็นกี่ชิ้น (ที่ฝากเว็บรับได้ไม่เกิน 100 MB ต่อไฟล์)  0 = ไม่ได้หั่น
 const BIG_FILES = [
-  { path: `${MODEL}/onnx/model_quantized.onnx`, parts: 3, bytes: 118308126 },
-  { path: `${VISION}/onnx/vision_model_quantized.onnx`, parts: 0, bytes: 89117001 },
+  { path: `${MODEL}/onnx/model_quantized.onnx`, parts: 3, bytes: 118308126, cmd: "load" },
+  { path: `${VISION}/onnx/vision_model_quantized.onnx`, parts: 0, bytes: 89117001, cmd: "loadVision" },
 ];
 const CACHE = "file-search-models-v1";
 
 const vendor = (path) => new URL(`../vendor/${path}`, import.meta.url).href;
-let report = () => {};                    // ตัวแจ้งความคืบหน้าการโหลดโมเดล
+const reporters = {};                     // คำสั่งโหลดโมเดล → ตัวแจ้งความคืบหน้าของคำสั่งนั้น (สองโมเดลโหลดพร้อมกันได้ ต้องไม่ปนกัน)
 
 // (ไลบรารีขอไฟล์เดียวกันมากกว่าหนึ่งครั้ง จึงจำก้อนที่โหลดแล้วไว้ ไม่โหลดซ้ำ)
 const blobs = new Map();
-function bigFile(url, { parts, bytes }) {
+function bigFile(url, { parts, bytes, cmd }) {
   if (!blobs.has(url)) {
     blobs.set(url, (async () => {
       const cache = await caches.open(CACHE).catch(() => null);
@@ -43,7 +43,7 @@ function bigFile(url, { parts, bytes }) {
           if (done) break;
           pieces.push(value);
           loaded += value.length;
-          report({ loaded, total: bytes });
+          reporters[cmd]?.({ loaded, total: bytes });
         }
       }
       const blob = new Blob(pieces, { type: "application/octet-stream" });
@@ -139,7 +139,7 @@ async function tag(blob) {
 self.onmessage = async ({ data: { id, cmd, texts, blob } }) => {
   try {
     if (cmd === "load" || cmd === "loadVision") {
-      report = (progress) => self.postMessage({ id, progress });
+      reporters[cmd] = (progress) => self.postMessage({ id, progress });
       await (cmd === "load" ? load() : loadVision());
       return self.postMessage({ id, result: true });
     }

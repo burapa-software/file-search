@@ -26,6 +26,11 @@ function load() {
   return loaded;
 }
 
+// รูปนี้ยังรอให้ AI ดูอยู่ไหม  ระเบียนที่ทำดัชนีไว้ก่อนมีฟีเจอร์นี้ไม่มีค่า needsTags จึงดูจากเนื้อหาแทน:
+// เป็นรูป อ่านได้ และมีตัวหนังสือน้อย (รูปที่ตัวหนังสือเยอะไม่ติดป้ายอยู่แล้ว)
+const awaitsTags = (rec) => rec.needsTags ??
+  (TAGGABLE.has(rec.ext) && !rec.error && rec.chunks.reduce((n, c) => n + c.text.length, 0) < TEXT_IMAGE_CHARS);
+
 function stats() {
   const out = {};
   for (const rec of records.values()) {
@@ -33,7 +38,7 @@ function stats() {
     s.total++;
     if (rec.error) s.errors++;
     if (rec.needsOcr) s.needsOcr++;
-    if (rec.needsTags) s.needsTags++;
+    if (awaitsTags(rec)) s.needsTags++;
   }
   return out;
 }
@@ -86,7 +91,7 @@ async function index(folderId, items, failedDirs, progress) {
     // ไฟล์ไม่เปลี่ยนและรอบก่อนอ่านได้ปกติ ไม่ต้องอ่านใหม่ (ไฟล์ที่รอบก่อนอ่านไม่ได้ จะลองใหม่ทุกรอบ)
     // ไฟล์ที่รอ OCR อยู่ จะถูกอ่านใหม่เมื่อเปิด OCR  รูปที่รอให้ AI ดู ก็เช่นกันเมื่อเปิดสวิตช์นั้น
     const textStillGood = unchanged && !old.error && !(old.needsOcr && ocrOn);
-    if (textStillGood && !(old.needsTags && tagsOn)) {
+    if (textStillGood && !(tagsOn && awaitsTags(old))) {
       count.unchanged++;
       continue;
     }
