@@ -254,7 +254,12 @@ select { font-size: 14px; max-width: 100%; }
 .results .hit b { font-weight: 600; }
 .results details summary { cursor: pointer; color: var(--muted); font-size: 14px; }
 .results .top-row { flex-wrap: nowrap; align-items: flex-start; }
-.results .actions { flex-wrap: nowrap; gap: 6px; flex-shrink: 0; }
+/* ปุ่มรูปสัญลักษณ์บนการ์ดผลค้น (พรีวิว / เปิดไฟล์ / เปิดโฟลเดอร์)  ถ้าเปิดไฟล์ไม่ได้ ปุ่มจะเปลี่ยนเป็นข้อความแจ้งแทนรูป */
+.icon-btn { display: inline-grid; place-items: center; min-width: 36px; height: 36px; padding: 0 7px; font-size: 14px; color: var(--muted); }
+.icon-btn:hover { color: var(--green); border-color: var(--green); }
+.icon-btn[aria-expanded="true"] { color: var(--green); border-color: var(--green); }
+.results .actions { flex-wrap: wrap; justify-content: flex-end; gap: 6px; flex-shrink: 0; max-width: 60%; }
+.folder-hint { margin: 0 0 8px; padding: 6px 10px; border-radius: 8px; background: var(--warn-bg); color: var(--warn-text); font-size: 13px; }
 .preview { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .preview .where { color: var(--muted); font-size: 14px; }
 .preview .row { gap: 6px; }

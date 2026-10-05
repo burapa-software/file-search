@@ -15,6 +15,21 @@ const el = (tag, props = {}, ...children) => {
 };
 const num = (n) => n.toLocaleString("en-US");
 
+// รูปสัญลักษณ์บนปุ่ม (ลายเส้นจากชุด Feather สัญญาอนุญาต MIT)  เป็นข้อความคงที่ในโค้ด ไม่ได้มาจากไฟล์ของผู้ใช้
+const ICONS = {
+  eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff: '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>',
+  file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
+  folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
+};
+function icon(name) {
+  const holder = document.createElement("span");
+  holder.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
+  return holder.firstChild;
+}
+// ปุ่มที่เป็นรูปสัญลักษณ์อย่างเดียว  label = คำอธิบายที่ขึ้นเมื่อเอาเมาส์ชี้ และที่โปรแกรมอ่านจออ่านให้ฟัง
+const iconButton = (name, label, onclick) => el("button", { className: "icon-btn", title: label, ariaLabel: label, onclick }, icon(name));
+
 // ---------------- ติดต่อกับ worker ----------------
 const worker = new Worker(new URL("./worker.js", import.meta.url), { type: "module" });
 const pending = new Map();
@@ -507,16 +522,21 @@ function renderResults(reset) {
     if (group !== "exact" && (at === 0 ? group === "sem" : groupOf(last.results[at - 1]) !== group)) {
       list.append(el("li", { className: `divider ${group}`, textContent: GROUP_TITLE[group] }));
     }
-    const open = el("button", { className: "small", textContent: "เปิดไฟล์", onclick: () => openFile(r, open) });
+    const open = iconButton("file", "เปิดไฟล์", () => openFile(r, open));
+    // ปุ่มเปิดโฟลเดอร์: เฉพาะโฟลเดอร์ที่เพิ่มด้วยปุ่ม "เพิ่มโฟลเดอร์" (วิธีสำรองไม่มีตัวจับไฟล์จริง)
+    const folderHint = el("div", { className: "folder-hint", hidden: true });
+    const canOpenFolder = folder && folder.kind === "handle" && "showOpenFilePicker" in window;
+    const openDir = iconButton("folder", "เปิดโฟลเดอร์ที่เก็บไฟล์นี้", () => openFolder(r, openDir, folderHint));
     // ปุ่มพรีวิว: กดครั้งแรกสร้างแผงพรีวิวต่อท้ายการ์ด กดอีกครั้งซ่อน
     let panel = null;
-    const preview = el("button", { className: "small", textContent: "พรีวิว", ariaExpanded: "false" });
-    preview.onclick = () => {
+    const preview = iconButton("eye", "พรีวิว", () => {
       if (!panel) item.append((panel = previewPanel(r)));
       else panel.hidden = !panel.hidden;
-      preview.textContent = panel.hidden ? "พรีวิว" : "ซ่อนพรีวิว";
+      preview.replaceChildren(icon(panel.hidden ? "eye" : "eyeOff"));       // ตาปิด = กดเพื่อซ่อนพรีวิว
+      preview.title = preview.ariaLabel = panel.hidden ? "พรีวิว" : "ซ่อนพรีวิว";
       preview.ariaExpanded = String(!panel.hidden);
-    };
+    });
+    preview.ariaExpanded = "false";
     const item = el("li", {},
       el("div", { className: "row between top-row" },
         el("span", { className: "name-line" },
@@ -526,9 +546,10 @@ function renderResults(reset) {
             className: `near-tag ${group}`, textContent: GROUP_TAG[group],
             title: r.sem ? `ความใกล้เคียง ${Math.round(r.score * 100)}%` : `ในไฟล์สะกดว่า ${r.marks.join(", ")}`,
           })])),
-        el("span", { className: "row actions" }, preview, open)),
+        el("span", { className: "row actions" }, preview, open, ...(canOpenFolder ? [openDir] : []))),
       el("div", { className: "meta", textContent: `${r.type} · แก้ไขล่าสุด ${formatDate(r.mtime)} · เจอ ${num(r.hitCount)} ตำแหน่ง` }),
       el("div", { className: "path", textContent: `${folder ? folder.name : "?"}/${r.rel}` }),
+      folderHint,
       ...r.hits.slice(0, 3).map((h) => hitLine(h, marks)),
     );
     if (r.hits.length > 3) {
@@ -543,16 +564,24 @@ function renderResults(reset) {
   $("more").hidden = shown >= last.results.length;
 }
 
-// หาไฟล์จริงของผลค้นรายการหนึ่ง (ขออนุญาตอ่านโฟลเดอร์ถ้าจำเป็น)  ผู้ใช้ไม่อนุญาต = คืน null
+// หา "ตัวจับ" ของไฟล์จริงในเครื่อง สำหรับผลค้นจากโฟลเดอร์ที่เพิ่มด้วยปุ่ม "เพิ่มโฟลเดอร์" (ขออนุญาตอ่านโฟลเดอร์ถ้าจำเป็น)
+// ผู้ใช้ไม่อนุญาต = คืน null
+async function handleOf(r) {
+  const folder = folders.find((f) => f.id === r.folderId);
+  if ((await folder.handle.queryPermission({ mode: "read" })) !== "granted" &&
+      (await folder.handle.requestPermission({ mode: "read" })) !== "granted") return null;
+  const parts = r.rel.split("/");
+  let dir = folder.handle;
+  for (const part of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(part);
+  return dir.getFileHandle(parts[parts.length - 1]);
+}
+
+// หาไฟล์จริงของผลค้นรายการหนึ่ง  ผู้ใช้ไม่อนุญาต = คืน null
 async function fileOf(r) {
   const folder = folders.find((f) => f.id === r.folderId);
   if (folder.kind === "handle") {
-    if ((await folder.handle.queryPermission({ mode: "read" })) !== "granted" &&
-        (await folder.handle.requestPermission({ mode: "read" })) !== "granted") return null;
-    const parts = r.rel.split("/");
-    let dir = folder.handle;
-    for (const part of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(part);
-    return (await dir.getFileHandle(parts[parts.length - 1])).getFile();
+    const handle = await handleOf(r);
+    return handle && handle.getFile();
   }
   const file = sessionFiles.get(folder.id)?.get(r.rel);
   if (!file) throw new Error("ต้องเลือกโฟลเดอร์นี้ด้วยวิธีสำรองอีกครั้งก่อน จึงจะเปิดไฟล์ได้");
@@ -577,6 +606,37 @@ async function openFile(r, button) {
   if (VIEWABLE.has(extOfName(r.name))) window.open(url, "_blank");
   else el("a", { href: url, download: r.name }).click();
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+// เปิดหน้าต่างโฟลเดอร์ที่เก็บไฟล์นี้ (แทนการดาวน์โหลดสำเนา)
+// เว็บสั่งเปิด File Explorer / Finder ตรง ๆ ไม่ได้ ที่ทำได้คือเปิดหน้าต่าง "เลือกไฟล์" ของระบบ ให้ไปเริ่มที่โฟลเดอร์ของไฟล์นี้
+// ในหน้าต่างนั้นผู้ใช้เห็นไฟล์จริง คลิกขวาเพื่อเปิดด้วยโปรแกรมได้ (ได้ไฟล์ตัวจริง ไม่ใช่สำเนา) เสร็จแล้วกดยกเลิก
+// เว็บใส่ชื่อไฟล์ลงในช่องค้นหาของหน้าต่างนั้นให้ไม่ได้ จึงช่วยสองทาง: คัดลอกชื่อไฟล์ไว้ให้ผู้ใช้กดวาง (Ctrl+V) เอง
+// และกรองหน้าต่างให้เห็นเฉพาะไฟล์ชนิดเดียวกัน โดยใช้ชื่อไฟล์เป็นชื่อตัวกรอง จะได้เห็นชื่อที่ต้องหาอยู่ในหน้าต่างด้วย
+const FOLDER_HINT = "หน้าต่างโฟลเดอร์เปิดอยู่ · คัดลอกชื่อไฟล์ไว้ให้แล้ว: กด Ctrl+V ในช่องค้นหาของหน้าต่างเพื่อหาไฟล์ จากนั้นคลิกขวาที่ไฟล์เพื่อเปิดด้วยโปรแกรม (ได้ไฟล์ตัวจริง ไม่ใช่สำเนา) เสร็จแล้วกดยกเลิก (Cancel)";
+async function openFolder(r, button, hint) {
+  let handle;
+  try {
+    handle = await handleOf(r);
+  } catch (e) {
+    button.textContent = fileProblem(e);
+    button.title = e.message;
+    return;
+  }
+  if (!handle) return;
+  hint.textContent = FOLDER_HINT;               // คำแนะนำนี้แสดงค้างไว้ใต้การ์ดระหว่างที่หน้าต่างของระบบเปิดอยู่
+  hint.hidden = false;
+  navigator.clipboard?.writeText(r.name).catch(() => {});     // คัดลอกไม่ได้ก็ไม่เป็นไร ยังหาไฟล์ด้วยตาได้
+  const ext = extOfName(r.name);
+  const sameType = /^\.[a-z0-9]+$/.test(ext) ? { types: [{ description: r.name, accept: { "application/octet-stream": [ext] } }] } : {};
+  try {
+    await window.showOpenFilePicker({ startIn: handle, ...sameType });
+    hint.hidden = true;                         // ผู้ใช้เลือกไฟล์แล้วกด Open ในหน้าต่างนั้น: ไม่ต้องทำอะไรต่อ
+  } catch (e) {
+    if (e.name === "AbortError") hint.hidden = true;                                                      // ปิดหน้าต่างแล้ว
+    else if (e.name === "SecurityError") hint.textContent = "เบราว์เซอร์ขอให้กดปุ่ม เปิดโฟลเดอร์ อีกครั้ง";  // เพิ่งกดอนุญาตอ่านโฟลเดอร์ไป จึงต้องกดใหม่
+    else hint.textContent = `เปิดโฟลเดอร์ไม่ได้: ${e.message}`;
+  }
 }
 
 // ---------------- ค้นด้วยเสียง ----------------
