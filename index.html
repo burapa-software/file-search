@@ -19,22 +19,21 @@
         <span>บูรพาซอฟต์แวร์</span>
       </div>
     </header>
-    <p class="muted intro">ค้นคำใน Word, Excel, PowerPoint, PDF ไฟล์ข้อความ และเอกสารสแกนในเครื่องของคุณ</p>
+    <div class="intro-row">
+      <p class="muted intro">ค้นคำใน Word, Excel, PowerPoint, PDF ไฟล์ข้อความ และเอกสารสแกนในเครื่องของคุณ</p>
+      <!-- ปุ่มฟันเฟือง: สวิตช์แสดง/ซ่อนการ์ดโฟลเดอร์ด้านล่าง -->
+      <button id="folders-gear" class="gear" aria-controls="folders-card" aria-pressed="true" aria-label="แสดงหรือซ่อนการ์ดโฟลเดอร์" title="ซ่อนการ์ดโฟลเดอร์"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+    </div>
 
     <div id="unsupported" class="notice warn" hidden>
       เบราว์เซอร์นี้เลือกโฟลเดอร์แบบจำได้ไม่ได้ ให้เปิดหน้านี้ด้วย Chrome หรือ Edge บนคอมพิวเตอร์
     </div>
 
-    <section class="card" aria-labelledby="folders-title">
+    <section id="folders-card" class="card" aria-labelledby="folders-title">
       <div class="row between">
-        <!-- ตอนขยาย: คำแนะนำในวงเล็บ  ตอนย่อ: สรุปจำนวนโฟลเดอร์และไฟล์แทน -->
-        <h2 id="folders-title">โฟลเดอร์ที่ค้น <span id="folders-hint" class="hint">(สามารถเพิ่มได้หลายโฟลเดอร์)</span><span id="folders-brief" class="hint" hidden></span></h2>
-        <span class="row card-actions">
-          <button id="add-folder" class="primary green">เพิ่มโฟลเดอร์</button>
-          <button id="folders-toggle" aria-controls="folders-body" aria-expanded="true">ย่อ ▴</button>
-        </span>
+        <h2 id="folders-title">โฟลเดอร์ที่ค้น <span class="hint">(สามารถเพิ่มได้หลายโฟลเดอร์)</span></h2>
+        <button id="add-folder" class="primary green">เพิ่มโฟลเดอร์</button>
       </div>
-      <div id="folders-body">
       <ul id="folders" class="folders"></ul>
       <label class="option">
         <input id="ocr" type="checkbox">
@@ -53,7 +52,6 @@
         <button id="add-fallback">เลือกโฟลเดอร์ด้วยวิธีสำรอง</button>
         <input id="fallback-input" type="file" webkitdirectory multiple hidden>
       </details>
-      </div>
     </section>
 
     <section class="search" aria-label="ตัวกรอง">

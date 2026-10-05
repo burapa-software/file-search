@@ -104,21 +104,23 @@ const sessionFiles = new Map(); // id → Map(rel → File) ของโฟล�
 
 const stateOf = (id) => state.get(id) || state.set(id, {}).get(id);
 
-// ย่อ/ขยายการ์ดโฟลเดอร์  ตอนย่อเหลือแค่หัวการ์ดกับสรุปสั้น ๆ  ค่าที่เลือกจำไว้ในเบราว์เซอร์
-const foldersCollapsed = () => localStorage.getItem("folders-collapsed") === "yes";
+// ปุ่มฟันเฟือง: สวิตช์แสดง/ซ่อนการ์ดโฟลเดอร์ทั้งใบ  ค่าที่เลือกจำไว้ในเบราว์เซอร์
+// ถ้ายังไม่มีโฟลเดอร์เลย การ์ดแสดงเสมอ (ไม่งั้นหาปุ่มเพิ่มโฟลเดอร์ไม่เจอ)
+const foldersHidden = () => folders.length > 0 && localStorage.getItem("folders-hidden") === "yes";
 
-function renderCollapse() {
-  const collapsed = foldersCollapsed();
-  $("folders-body").hidden = collapsed;
-  $("folders-hint").hidden = collapsed;
-  $("folders-brief").hidden = !collapsed;
-  $("folders-toggle").textContent = collapsed ? "ขยาย ▾" : "ย่อ ▴";
-  $("folders-toggle").ariaExpanded = String(!collapsed);
+function renderGear() {
+  const hidden = foldersHidden();
+  const gear = $("folders-gear");
+  $("folders-card").hidden = hidden;
+  gear.ariaPressed = String(!hidden);
+  gear.title = hidden ? "แสดงการ์ดโฟลเดอร์" : "ซ่อนการ์ดโฟลเดอร์";
+  // การ์ดซ่อนอยู่ แต่มีโฟลเดอร์ที่รออนุญาตหรือทำดัชนีไม่สำเร็จ: ขึ้นจุดเตือนให้กดเปิดดู
+  gear.classList.toggle("attention", hidden && folders.some((f) => stateOf(f.id).needsPermission || stateOf(f.id).error));
 }
 
 function toggleFolders() {
-  localStorage.setItem("folders-collapsed", foldersCollapsed() ? "no" : "yes");
-  renderCollapse();
+  localStorage.setItem("folders-hidden", foldersHidden() ? "no" : "yes");
+  renderGear();
 }
 
 function renderFolders() {
@@ -126,12 +128,7 @@ function renderFolders() {
   list.replaceChildren();
   $("no-folders").hidden = folders.length > 0;
 
-  // สรุปที่แสดงตอนย่อการ์ด: จำนวนโฟลเดอร์และไฟล์ และสิ่งที่ผู้ใช้ควรรู้แม้ไม่ได้เปิดดู
-  const totalFiles = folders.reduce((sum, f) => sum + ((stats[f.id] || {}).total || 0), 0);
-  const brief = [`${num(folders.length)} โฟลเดอร์`, `${num(totalFiles)} ไฟล์`];
-  if (folders.some((f) => stateOf(f.id).busy)) brief.push("กำลังทำดัชนี");
-  if (folders.some((f) => stateOf(f.id).needsPermission)) brief.push("มีโฟลเดอร์รออนุญาต กดขยายเพื่อดู");
-  $("folders-brief").textContent = `(${brief.join(" · ")})`;
+  renderGear();
   for (const folder of folders) {
     const st = stateOf(folder.id);
     const s = stats[folder.id] || { total: 0, errors: 0, needsOcr: 0 };
@@ -519,8 +516,7 @@ async function start() {
   $("unsupported").hidden = "showDirectoryPicker" in window;
   $("add-folder").disabled = !("showDirectoryPicker" in window);
   $("add-folder").onclick = addFolder;
-  $("folders-toggle").onclick = toggleFolders;
-  renderCollapse();
+  $("folders-gear").onclick = toggleFolders;
   $("add-fallback").onclick = () => $("fallback-input").click();
   $("fallback-input").onchange = (e) => addFallback(e.target.files).finally(() => { e.target.value = ""; });
   $("more").onclick = () => renderResults(false);

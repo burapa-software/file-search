@@ -59,7 +59,23 @@ p { margin: 8px 0; }
   padding: 16px 0 14px;
   border-bottom: 1px solid var(--line);
 }
-.intro { margin-top: 14px; }
+.intro-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
+.intro { margin: 0; }
+/* ปุ่มฟันเฟือง: สวิตช์แสดง/ซ่อนการ์ดโฟลเดอร์  เขียว = การ์ดแสดงอยู่, เทา = ซ่อนอยู่ */
+.gear {
+  position: relative; flex-shrink: 0;
+  display: grid; place-items: center;
+  border: 0; border-radius: 50%; padding: 6px;
+  color: var(--muted);
+}
+.gear[aria-pressed="true"] { color: var(--green); }
+.gear:hover { background: rgba(var(--green-glow), 0.12); }
+/* จุดเตือนบนฟันเฟือง: การ์ดซ่อนอยู่ แต่มีโฟลเดอร์ที่ต้องการให้ผู้ใช้ทำอะไรสักอย่าง */
+.gear.attention::after {
+  content: ""; position: absolute; top: 4px; right: 4px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--warn-text); box-shadow: 0 0 0 2px var(--bg);
+}
 /* ป้ายชื่อทีม: ตัวหนังสือสีเขียวอมฟ้าเรืองแสง (โทนเดียวกับตัวตุ๊กตา) พื้นหลังค่อย ๆ สว่างขึ้นแล้วหรี่ลงวนไป */
 .brand {
   display: flex; align-items: center; gap: 10px; flex-shrink: 0;
@@ -119,8 +135,6 @@ button.primary.green { background: var(--green); border-color: var(--green); col
 button.small { font-size: 14px; padding: 3px 10px; }
 h2 .hint { font-size: 13px; font-weight: 400; color: var(--muted); opacity: 0.7; margin-left: 4px; }
 
-.card-actions { gap: 8px; flex-wrap: nowrap; }
-#folders-toggle { white-space: nowrap; color: var(--muted); }
 .folders { list-style: none; margin: 8px 0 0; padding: 0; }
 .folders li {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
