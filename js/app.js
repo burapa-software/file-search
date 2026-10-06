@@ -89,7 +89,7 @@ async function setTags(on) {
     status.textContent = "";
   } catch (e) {
     status.classList.add("error");
-    status.textContent = `AI ดูรูปใช้ไม่ได้: ${e.message}`;
+    status.textContent = `บูรพาดูรูปไม่ได้: ${e.message}`;
     return;
   }
   // ให้ AI ดูรูปที่รออยู่ ของโฟลเดอร์ที่เบราว์เซอร์ยังอนุญาตให้เลย
@@ -126,10 +126,10 @@ async function syncSemantic() {
     do {
       embedAgain = false;
       r = await call("embed", {}, (p) => {
-        if (p.model) status.textContent = `กำลังโหลดโมเดล AI ${Math.round(p.model.loaded / 1e6)} / ${Math.round(p.model.total / 1e6)} MB`;
-        else status.textContent = `AI กำลังอ่านเอกสาร ${num(p.done + 1)} / ${num(p.total)} · ${p.name}`;
+        if (p.model) status.textContent = `กำลังโหลดโมเดลของบูรพา ${Math.round(p.model.loaded / 1e6)} / ${Math.round(p.model.total / 1e6)} MB`;
+        else status.textContent = `บูรพากำลังอ่านเอกสาร ${num(p.done + 1)} / ${num(p.total)} · ${p.name}`;
       });
-      status.textContent = !semOn() ? "" : r.left ? `AI พักไว้ก่อน เหลืออีก ${num(r.left)} ไฟล์` : "AI อ่านเอกสารครบแล้ว";
+      status.textContent = !semOn() ? "" : r.left ? `บูรพาพักไว้ก่อน เหลืออีก ${num(r.left)} ไฟล์` : "บูรพาอ่านเอกสารครบแล้ว";
       if (r.done) runSearch();
     } while (semOn() && (embedAgain || r.left));    // ถูกพักเพราะมีงานทำดัชนีแทรก: ต่อคิวใหม่ จะได้ทำต่อหลังงานนั้น
   } catch (e) {
@@ -196,7 +196,7 @@ function renderFolders() {
       const parts = [`${num(s.total)} ไฟล์`];
       if (s.errors) parts.push(`อ่านไม่ได้ ${num(s.errors)}`);
       if (s.needsOcr) parts.push(`รอ OCR ${num(s.needsOcr)} (รูปภาพ/เอกสารสแกน ${ocrOn() ? "กด อัปเดต เพื่ออ่าน" : "ค้นได้แค่ชื่อไฟล์จนกว่าจะเปิด OCR"})`);
-      if (s.needsTags && tagsOn()) parts.push(`รอ AI ดูรูป ${num(s.needsTags)} (กด อัปเดต)`);
+      if (s.needsTags && tagsOn()) parts.push(`รอบูรพาดูรูป ${num(s.needsTags)} (กด อัปเดต)`);
       if (st.note) parts.push(st.note);
       status.append(parts.join(" · "));
       if (st.error) { status.classList.add("error"); status.textContent = st.error; }
@@ -479,7 +479,7 @@ async function addSemantic(query, mine) {
 
 // ผลค้นแต่ละรายการอยู่กลุ่มไหน: ตรงตัว / คำสะกดใกล้เคียง / ความหมายใกล้เคียง
 const groupOf = (r) => (r.sem ? "sem" : r.near ? "near" : "exact");
-const GROUP_TITLE = { near: "คำสะกดใกล้เคียง", sem: "ความหมายใกล้เคียง · AI เลือกให้ อาจไม่ตรงทุกไฟล์" };
+const GROUP_TITLE = { near: "คำสะกดใกล้เคียง", sem: "ความหมายใกล้เคียง · บูรพา เลือกให้ อาจไม่ตรงทุกไฟล์" };
 const GROUP_TAG = { near: "ใกล้เคียง", sem: "ความหมาย" };
 
 // ใส่แถบสีให้คำที่ค้น  สร้างเป็นโหนดข้อความ ไม่ใช้ innerHTML ข้อความในไฟล์จึงแทรกโค้ดในหน้าเว็บไม่ได้

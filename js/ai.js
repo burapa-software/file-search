@@ -17,7 +17,7 @@ export function ask(message, onProgress) {
       else job.resolve(data.result);
     };
     ai.onerror = () => {
-      for (const job of pending.values()) job.reject(new Error("ตัว AI เริ่มทำงานไม่ได้"));
+      for (const job of pending.values()) job.reject(new Error("บูรพาเริ่มทำงานไม่ได้"));
       pending.clear();
       ai = null;
     };

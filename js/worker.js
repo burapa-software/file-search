@@ -7,7 +7,7 @@ import { context, prepare, search } from "./search.js";
 import { getAll, put, removeMany } from "./db.js";
 import { recognize, release } from "./ocr.js";
 import { embedRecord, loadModel, needsEmbedding, semanticSearch } from "./semantic.js";
-import { TAG_LOC, TAGGABLE, TEXT_IMAGE_CHARS, loadVision, tagImage } from "./tags.js";
+import { OLD_TAG_LOCS, TAG_LOC, TAGGABLE, TEXT_IMAGE_CHARS, loadVision, tagImage } from "./tags.js";
 import { findDuplicates } from "./dupes.js";
 
 // โฟลเดอร์ที่ข้าม ไม่ต้องอ่าน
@@ -24,7 +24,10 @@ let loaded = null;
 
 function load() {
   loaded ??= getAll("files").then((rows) => {
-    for (const rec of rows) records.set(rec.key, prepare(rec));
+    for (const rec of rows) {
+      for (const c of rec.chunks) if (OLD_TAG_LOCS.includes(c.loc)) c.loc = TAG_LOC;   // ป้ายรูปที่ติดไว้ด้วยชื่อตำแหน่งเดิม
+      records.set(rec.key, prepare(rec));
+    }
   });
   return loaded;
 }
