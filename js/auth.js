@@ -12,7 +12,7 @@
 //                      เว้นว่าง = ไม่บันทึกอะไรลงฐานข้อมูล  (LIFF ต้องเปิด scope "openid" ด้วย จึงจะได้หลักฐานการล็อกอิน)
 const GOOGLE_CLIENT_ID = "";
 const LINE_LIFF_ID = "2011973350-3eXaYD2f";
-const LOGIN_RECORD_URL = "";
+const LOGIN_RECORD_URL = "https://cdrepkyqwkuatwcsvrhw.supabase.co/functions/v1/line-login";
 
 const KEY = "account";          // { provider: "line" | "google", name, picture }
 const PENDING = "line-login";   // ตั้งไว้ก่อนเด้งไปหน้า LINE จะได้รู้ว่าต้องทำต่อเมื่อเด้งกลับมา
