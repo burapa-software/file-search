@@ -3,6 +3,7 @@
 
 import { getAll, put, remove } from "./db.js";
 import { FILE_TYPES } from "./types.js";
+import { configured, currentUser, loginGoogle, loginLine, logout, resumeLogin } from "./auth.js";
 
 const PAGE_SIZE = 20;           // แสดงผลครั้งละกี่ไฟล์
 const VIEWABLE = new Set([".pdf", ".txt", ".md", ".csv", ".log", ".png", ".jpg", ".jpeg", ".bmp"]);   // เปิดดูในแท็บใหม่ได้เลย
@@ -21,10 +22,11 @@ const ICONS = {
   eyeOff: '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>',
   file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
   folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
+  user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
 };
-function icon(name) {
+function icon(name, size = 20) {
   const holder = document.createElement("span");
-  holder.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
+  holder.innerHTML = `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
   return holder.firstChild;
 }
 // ปุ่มที่เป็นรูปสัญลักษณ์อย่างเดียว  label = คำอธิบายที่ขึ้นเมื่อเอาเมาส์ชี้ และที่โปรแกรมอ่านจออ่านให้ฟัง
@@ -69,6 +71,44 @@ async function setOcr(on) {
   for (const folder of folders) {
     const st = stateOf(folder.id);
     if (folder.kind === "handle" && !st.busy && !st.needsPermission && (stats[folder.id] || {}).needsOcr) scan(folder);
+  }
+}
+
+// ---------------- เข้าสู่ระบบ (LINE / Google) ----------------
+// ปุ่มรูปคนข้างไมค์เปิดการ์ดเข้าสู่ระบบ  ล็อกอินแล้วได้แค่ชื่อกับรูปมาแสดง ไม่ได้ใช้กั้นสิทธิ์ (ดูคำอธิบายใน auth.js)
+function renderAccount(error) {
+  const user = currentUser();
+  const open = $("login-open");
+  open.replaceChildren(user && user.picture ? el("img", { src: user.picture, alt: "" }) : icon("user", 26));
+  open.title = open.ariaLabel = user ? `บัญชี: ${user.name}` : "เข้าสู่ระบบ";
+
+  $("login-title").textContent = user ? "บัญชีของคุณ" : "เข้าสู่ระบบ";
+  $("login-sub").textContent = user ? `เข้าสู่ระบบด้วย ${user.provider === "line" ? "LINE" : "Google"} อยู่` : "เลือกบัญชีที่ต้องการใช้เข้าสู่ระบบ";
+  $("login-choices").hidden = !!user;
+  $("login-consent").hidden = !!user || !configured.record || !configured.line;
+  $("login-account").hidden = !user;
+  if (user) {
+    $("account-name").textContent = user.name;
+    $("account-picture").hidden = !user.picture;
+    if (user.picture) $("account-picture").src = user.picture;
+  }
+  // ปุ่มของผู้ให้บริการที่ยังไม่ได้ตั้งค่า กดไม่ได้ และมีข้อความบอกเหตุผลใต้ปุ่ม
+  $("login-line").disabled = !configured.line;
+  $("login-google").disabled = !configured.google;
+  const missing = [configured.line ? "" : "LINE", configured.google ? "" : "Google"].filter(Boolean);
+  const note = $("login-note");
+  note.textContent = error || (!user && missing.length ? `ยังไม่ได้ตั้งค่า ${missing.join(" และ ")} — ดูขั้นตอนใน README.md` : "");
+  note.hidden = !note.textContent;
+}
+
+async function login(start) {
+  try {
+    const user = await start();
+    renderAccount();
+    if (user) $("login-dialog").close();
+  } catch (e) {
+    renderAccount(e.message);
+    if (!$("login-dialog").open) $("login-dialog").showModal();     // (ล็อกอินค้างจากรอบก่อนแล้วไม่สำเร็จ: เปิดการ์ดให้เห็นสาเหตุ)
   }
 }
 
@@ -763,6 +803,15 @@ async function start() {
   $("unsupported").hidden = "showDirectoryPicker" in window;
   $("add-folder").disabled = !("showDirectoryPicker" in window);
   $("add-folder").onclick = addFolder;
+  const dialog = $("login-dialog");
+  $("login-open").onclick = () => { renderAccount(); dialog.showModal(); };
+  $("login-close").onclick = () => dialog.close();
+  dialog.onclick = (e) => { if (e.target === dialog) dialog.close(); };   // กดพื้นมืดนอกการ์ด = ปิด
+  $("login-line").onclick = () => login(loginLine);
+  $("login-google").onclick = () => login(loginGoogle);
+  $("logout").onclick = () => { logout(); renderAccount(); };
+  renderAccount();
+  if (localStorage.getItem("line-login")) login(resumeLogin);     // เพิ่งเด้งกลับมาจากหน้าล็อกอินของ LINE: ทำต่อให้เสร็จ
   $("folders-gear").onclick = toggleFolders;
   $("mic").hidden = !speechApi();
   $("mic").onclick = toggleVoice;
